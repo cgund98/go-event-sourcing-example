@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # Buf - generate buf.lock
   buf-mod-update:
     image: bufbuild/buf:latest
     container_name: buf-mod-update
@@ -12,6 +13,7 @@ services:
       - BUF_TOKEN=${BUF_TOKEN}
     command: dep update
 
+  # Buf - generate stubs
   buf-generate:
     image: bufbuild/buf:latest
     container_name: buf-generate
@@ -24,3 +26,35 @@ services:
     command: generate
     depends_on:
       - buf-mod-update
+
+  # Postgres
+  postgres:
+    image: postgres:16
+    ports:
+        - 25432:5432
+    networks:
+        - postgres-network
+    environment:
+        - POSTGRES_PASSWORD=postgres
+
+  # Flyway
+  flyway-pg:
+    image: flyway-pg:local
+    depends_on:
+    - postgres
+    build:
+        context: .
+        dockerfile: migrations/Dockerfile.flyway-pg
+    networks:
+        - postgres-network
+    environment:
+        - FLYWAY_URL=jdbc:postgresql://postgres:5432/postgres
+        - FLYWAY_USER=postgres
+        - FLYWAY_PASSWORD=postgres
+    command: migrate
+    volumes:
+        - ./resources/migrations/postgres:/flyway/sql:ro
+
+networks:
+  postgres-network:
+    driver: bridge

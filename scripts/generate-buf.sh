@@ -24,4 +24,4 @@ sudo chown -R $local_uid:$local_gid go/api
 sudo chown $local_uid:$local_gid buf.lock
 chmod 644 buf.lock
 
-echo "Buf generation complete!" 
+echo "Buf generation complete!"

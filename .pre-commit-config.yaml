@@ -1,0 +1,24 @@
+---
+# .pre-commit-config.yaml
+repos:
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v4.6.0
+      hooks:
+          - id: check-yaml
+          - id: end-of-file-fixer
+          - id: trailing-whitespace
+          - id: debug-statements
+          - id: requirements-txt-fixer
+          - id: no-commit-to-branch
+            args: [-b, main, -b, production, -b, staging]
+
+    - repo: https://github.com/pre-commit/mirrors-prettier
+      rev: v4.0.0-alpha.8
+      hooks:
+          - id: prettier
+            types_or: [javascript, ts, markdown, html]
+
+    - repo: https://github.com/dnephin/pre-commit-golang
+      rev: c17f835
+      hooks:
+        - id: go-fmt

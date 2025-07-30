@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Use the first argument as the env file, default to .env.local
+ENV_FILE="${ENV_FILE:-.env.local}"
+
+# Load environment variables from the specified env file (excluding comments)
+if [ -f "$ENV_FILE" ]; then
+    export $(grep -v '^#' "$ENV_FILE" | xargs)
+else
+    echo "Warning: $ENV_FILE file not found"
+fi
+
+# Execute the command passed as arguments using bash
+bash -c "$*"

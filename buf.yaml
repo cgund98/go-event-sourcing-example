@@ -7,7 +7,7 @@ breaking:
     - FILE
 deps:
   - buf.build/googleapis/googleapis
-  
+
 modules:
   - path: api
 

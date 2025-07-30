@@ -24,7 +24,7 @@ service OrderService {
     rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse) {
         option (google.api.http) = {
             post: "/v1/orders"
-            body: "*"   
+            body: "*"
         };
     }
     rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse) {
