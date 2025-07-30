@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "v1/events";
+
+enum ShippingStatus {
+    SHIPPING_STATUS_UNSPECIFIED = 0;
+    SHIPPING_STATUS_WAITING_FOR_PAYMENT = 1;
+    SHIPPING_STATUS_WAITING_FOR_SHIPMENT = 2;
+    SHIPPING_STATUS_IN_TRANSIT = 3;
+    SHIPPING_STATUS_DELIVERED = 4;
+    SHIPPING_STATUS_CANCELLED = 5;
+}
+message GetOrderRequest {
+    string order_id = 1;
+}
+
+message GetOrderResponse {
+    string order_id = 1;
+    string customer_id = 2;
+    string product_id = 3;
+
+    google.protobuf.Timestamp created_at = 5;
+    google.protobuf.Timestamp updated_at = 6;
+
+    int32 quantity = 7;
+    double total_price = 8;
+
+    string payment_method = 9;
+    ShippingStatus shipping_status = 10;
+}
+
+message ListOrdersRequest {
+    int32 limit = 1;
+    int32 offset = 2;
+}
+
+message ListOrdersResponse {
+    repeated GetOrderResponse orders = 1;
+}

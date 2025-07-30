@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package events.v1;
+
+option go_package = "v1/events";
+
+message PlaceOrderRequest {
+    string customer_id = 1;
+    string product_id = 2;
+    int32 quantity = 3;
+    double total_price = 4;
+    string payment_method = 5;
+}
+
+message PlaceOrderResponse {
+    string order_id = 1;
+}
+
+message CancelOrderRequest {
+    string order_id = 1;
+    string reason = 2;
+}
+
+message CancelOrderResponse {
+    string order_id = 1;
+}
+
+message UpdateOrderShippingStatusRequest {
+    string order_id = 1;
+    string status = 2;
+}
+
+message UpdateOrderShippingStatusResponse {
+    string order_id = 1;
+}

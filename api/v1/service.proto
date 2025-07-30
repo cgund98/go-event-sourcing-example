@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "v1/queries.proto";
+import "v1/commands.proto";
+import "google/api/annotations.proto";
+
+option go_package = "v1/events";
+
+service OrderService {
+
+    rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse) {
+        option (google.api.http) = {
+            get: "/v1/orders"
+        };
+    }
+
+    rpc GetOrder(GetOrderRequest) returns (GetOrderResponse) {
+        option (google.api.http) = {
+            get: "/v1/orders/{order_id}"
+        };
+    }
+    rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse) {
+        option (google.api.http) = {
+            post: "/v1/orders"
+            body: "*"   
+        };
+    }
+    rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse) {
+        option (google.api.http) = {
+            post: "/v1/orders/{order_id}/cancel"
+            body: "*"
+        };
+    }
+    rpc UpdateOrderShippingStatus(UpdateOrderShippingStatusRequest) returns (UpdateOrderShippingStatusResponse) {
+        option (google.api.http) = {
+            patch: "/v1/orders/{order_id}/shipping-status"
+            body: "*"
+        };
+    }
+}

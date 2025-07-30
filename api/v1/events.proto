@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "v1/events";
+
+message OrderPlaced {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+
+    string vendor_id = 3;
+    string product_id = 4;
+
+    int32 quantity = 5;
+    double total_price = 6;
+
+    string customer_id = 7;
+    string payment_method = 8;
+}
+
+message OrderPaymentInitiated {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+}
+
+message OrderPaid {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+}
+
+message OrderPaymentFailed {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    string reason = 3;
+}
+
+message OrderCancelled {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    string reason = 3;
+}
+
+message OrderShippingStatusUpdated {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    string status = 3;
+}

@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  buf-mod-update:
+    image: bufbuild/buf:latest
+    container_name: buf-mod-update
+    working_dir: /workspace
+    volumes:
+      # Mount the entire project directory
+      - .:/workspace
+    environment:
+      - BUF_TOKEN=${BUF_TOKEN}
+    command: dep update
+
+  buf-generate:
+    image: bufbuild/buf:latest
+    container_name: buf-generate
+    working_dir: /workspace
+    volumes:
+      # Mount the entire project directory
+      - .:/workspace
+    environment:
+      - BUF_TOKEN=${BUF_TOKEN}
+    command: generate
+    depends_on:
+      - buf-mod-update
