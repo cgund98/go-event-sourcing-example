@@ -15,7 +15,10 @@ services:
 
   # Buf - generate stubs
   buf-generate:
-    image: bufbuild/buf:latest
+    image: buf-with-grpc:local
+    build:
+      context: ./resources/docker
+      dockerfile: Dockerfile.buf
     container_name: buf-generate
     working_dir: /workspace
     volumes:
@@ -24,8 +27,6 @@ services:
     environment:
       - BUF_TOKEN=${BUF_TOKEN}
     command: generate
-    depends_on:
-      - buf-mod-update
 
   # Postgres
   postgres:

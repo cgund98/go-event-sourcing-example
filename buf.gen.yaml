@@ -10,3 +10,9 @@ plugins:
   ## gRPC for Golang
   - remote: buf.build/grpc/go:v1.5.1
     out: go/api
+
+  ## gRPC Gateway
+  - local: protoc-gen-grpc-gateway
+    out: go/api
+    opt:
+      - generate_unbound_methods=true

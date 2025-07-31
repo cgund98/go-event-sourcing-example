@@ -6,7 +6,7 @@ import "v1/queries.proto";
 import "v1/commands.proto";
 import "google/api/annotations.proto";
 
-option go_package = "v1/events";
+option go_package = "v1/orders";
 
 service OrderService {
 

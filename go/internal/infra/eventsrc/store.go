@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cgund98/go-eventsrc-example/internal/infra/logging"
 	"github.com/cgund98/go-eventsrc-example/internal/infra/pg"
 	"github.com/doug-martin/goqu/v9"
 	"github.com/jmoiron/sqlx"
@@ -44,14 +45,22 @@ func NewPostgresStore(db *sqlx.DB, table string) *PostgresStore {
 
 func (s *PostgresStore) Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) error {
 	// Compile query
-	ds := pg.Dialect.Insert(s.table).
+	ds := pg.Dialect.Insert(s.table).Prepared(true).
 		Cols("aggregate_id", "aggregate_type", "event_type", "event_data").
-		Vals([]interface{}{args.AggregateID, args.AggregateType, args.EventType, args.Data})
+		Rows([]goqu.Record{
+			{
+				"aggregate_id":   args.AggregateID,
+				"aggregate_type": args.AggregateType,
+				"event_type":     args.EventType,
+				"event_data":     args.Data,
+			},
+		})
 
 	query, queryArgs, err := ds.ToSQL()
 	if err != nil {
 		return pg.ErrorDsl(err)
 	}
+	logging.Logger.Info("Persisting event...", "query", query, "queryArgs", queryArgs)
 
 	// Execute query
 	_, err = tx.ExecContext(ctx, query, queryArgs...)
@@ -64,7 +73,7 @@ func (s *PostgresStore) Persist(ctx context.Context, tx pg.Tx, args PersistEvent
 
 func (s *PostgresStore) ListByAggregateID(ctx context.Context, aggregateID string) ([]Event, error) {
 	// Compile query
-	ds := pg.Dialect.From(s.table).
+	ds := pg.Dialect.From(s.table).Prepared(true).
 		Select(&Event{}).
 		Where(goqu.Ex{"aggregate_id": aggregateID})
 
@@ -87,6 +96,7 @@ func (s *PostgresStore) ListByAggregateID(ctx context.Context, aggregateID strin
 		if err != nil {
 			return nil, pg.ErrorUnmarshal(err)
 		}
+
 		events = append(events, event)
 	}
 

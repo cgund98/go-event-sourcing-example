@@ -2,10 +2,12 @@ package eventsrc
 
 import (
 	"context"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 )
 
+const KafkaWriteTimeout = 10 * time.Second
 const KafkaHeaderEventType = "event-type"
 
 type Bus interface {
@@ -25,11 +27,11 @@ type BusEvent struct {
 /** Kafka Bus */
 
 type KafkaBus struct {
-	conn *kafka.Conn
+	writer *kafka.Writer
 }
 
-func NewKafkaBus(conn *kafka.Conn) *KafkaBus {
-	return &KafkaBus{conn: conn}
+func NewKafkaBus(writer *kafka.Writer) *KafkaBus {
+	return &KafkaBus{writer: writer}
 }
 
 func (b *KafkaBus) Publish(ctx context.Context, args *PublishArgs) error {
@@ -43,7 +45,10 @@ func (b *KafkaBus) Publish(ctx context.Context, args *PublishArgs) error {
 		Value: args.Value,
 	}
 
-	_, err := b.conn.WriteMessages(msg)
+	wCtx, cancel := context.WithTimeout(ctx, KafkaWriteTimeout)
+	defer cancel()
+
+	err := b.writer.WriteMessages(wCtx, msg)
 	if err != nil {
 		return err
 	}

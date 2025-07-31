@@ -4,7 +4,7 @@ package events.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "v1/events";
+option go_package = "v1/orders";
 
 enum ShippingStatus {
     SHIPPING_STATUS_UNSPECIFIED = 0;

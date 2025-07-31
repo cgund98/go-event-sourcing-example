@@ -2,14 +2,33 @@ syntax = "proto3";
 
 package events.v1;
 
-option go_package = "v1/events";
+import "buf/validate/validate.proto";
+
+option go_package = "v1/orders";
 
 message PlaceOrderRequest {
-    string customer_id = 1;
-    string product_id = 2;
-    int32 quantity = 3;
-    double total_price = 4;
-    string payment_method = 5;
+    string customer_id = 1 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 255
+    ];
+    string vendor_id = 2 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 255
+    ];
+    string product_id = 3 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 255
+    ];
+    int32 quantity = 4 [
+        (buf.validate.field).int32.gt = 0
+    ];
+    double total_price = 5 [
+        (buf.validate.field).double.gt = 0
+    ];
+    string payment_method = 6 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 255
+    ];
 }
 
 message PlaceOrderResponse {
