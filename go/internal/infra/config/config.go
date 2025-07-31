@@ -5,7 +5,7 @@ import (
 )
 
 type Config struct {
-	GrpcPort int `default:"9092"`
+	GrpcPort int `default:"8081"`
 	HttpPort int `default:"8080"`
 
 	PostgresHost     string `default:"localhost"`
@@ -13,6 +13,12 @@ type Config struct {
 	PostgresUser     string `default:"postgres"`
 	PostgresPassword string `default:"postgres"`
 	PostgresDB       string `default:"orders"`
+
+	EventsTable string `default:"events"`
+	EventsTopic string `default:"events"`
+
+	KafkaHost string `default:"localhost"`
+	KafkaPort int    `default:"9092"`
 }
 
 func LoadConfig() (*Config, error) {
