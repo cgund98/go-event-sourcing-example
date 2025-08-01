@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package events.v1;
 
+import "v1/events.proto";
 import "buf/validate/validate.proto";
 
 option go_package = "v1/orders";
@@ -44,15 +45,14 @@ message CancelOrderResponse {
     string order_id = 1;
 }
 
-enum UpdateShippingStatusOptions {
-    UPDATE_SHIPPING_STATUS_OPTIONS_UNSPECIFIED = 0;
-    UPDATE_SHIPPING_STATUS_OPTIONS_IN_TRANSIT = 1;
-    UPDATE_SHIPPING_STATUS_OPTIONS_DELIVERED = 2;
-}
-
 message UpdateOrderShippingStatusRequest {
-    string order_id = 1;
-    UpdateShippingStatusOptions status = 2;
+    string order_id = 1 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 255
+    ];
+    ShippingStatus status = 2 [
+        (buf.validate.field).enum.defined_only = true
+    ];
 }
 
 message UpdateOrderShippingStatusResponse {

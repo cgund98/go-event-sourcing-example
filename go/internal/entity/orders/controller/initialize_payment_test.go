@@ -22,8 +22,13 @@ type MockStore struct {
 	mock.Mock
 }
 
-func (m *MockStore) Persist(ctx context.Context, tx pg.Tx, args eventsrc.PersistEventArgs) error {
+func (m *MockStore) Persist(ctx context.Context, tx pg.Tx, args eventsrc.PersistEventArgs) (string, error) {
 	callArgs := m.Called(ctx, tx, args)
+	return callArgs.String(0), callArgs.Error(1)
+}
+
+func (m *MockStore) Remove(ctx context.Context, tx pg.Tx, eventId string) error {
+	callArgs := m.Called(ctx, tx, eventId)
 	return callArgs.Error(0)
 }
 

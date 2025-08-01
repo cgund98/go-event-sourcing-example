@@ -188,7 +188,7 @@ func TestApplyOrderShippingStatusUpdatedToProjection_Delivered(t *testing.T) {
 	timestamp := time.Now().UTC()
 	event := &pb.OrderShippingStatusUpdated{
 		OrderId:   "order-123",
-		Status:    pb.UpdateShippingStatusOptions_UPDATE_SHIPPING_STATUS_OPTIONS_DELIVERED.String(),
+		Status:    pb.ShippingStatus_SHIPPING_STATUS_DELIVERED,
 		Timestamp: timestamppb.New(timestamp),
 	}
 
@@ -223,7 +223,7 @@ func TestApplyOrderShippingStatusUpdatedToProjection_InTransit(t *testing.T) {
 	timestamp := time.Now().UTC()
 	event := &pb.OrderShippingStatusUpdated{
 		OrderId:   "order-123",
-		Status:    pb.UpdateShippingStatusOptions_UPDATE_SHIPPING_STATUS_OPTIONS_IN_TRANSIT.String(),
+		Status:    pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT,
 		Timestamp: timestamppb.New(timestamp),
 	}
 
@@ -258,7 +258,7 @@ func TestApplyOrderShippingStatusUpdatedToProjection_UnknownStatus(t *testing.T)
 	timestamp := time.Now().UTC()
 	event := &pb.OrderShippingStatusUpdated{
 		OrderId:   "order-123",
-		Status:    "unknown_status",
+		Status:    pb.ShippingStatus_SHIPPING_STATUS_UNSPECIFIED,
 		Timestamp: timestamppb.New(timestamp),
 	}
 
@@ -357,7 +357,7 @@ func TestReduceToProjection_MultipleEvents(t *testing.T) {
 
 	shippingUpdatedEvent := &pb.OrderShippingStatusUpdated{
 		OrderId:   "order-123",
-		Status:    pb.UpdateShippingStatusOptions_UPDATE_SHIPPING_STATUS_OPTIONS_IN_TRANSIT.String(),
+		Status:    pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT,
 		Timestamp: timestamppb.New(baseTime.Add(3 * time.Hour)),
 	}
 

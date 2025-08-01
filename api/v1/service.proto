@@ -29,13 +29,13 @@ service OrderService {
     }
     rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse) {
         option (google.api.http) = {
-            post: "/v1/orders/{order_id}/cancel"
+            put: "/v1/orders/{order_id}/cancel"
             body: "*"
         };
     }
     rpc UpdateOrderShippingStatus(UpdateOrderShippingStatusRequest) returns (UpdateOrderShippingStatusResponse) {
         option (google.api.http) = {
-            patch: "/v1/orders/{order_id}/shipping-status"
+            put: "/v1/orders/{order_id}/shipping-status"
             body: "*"
         };
     }

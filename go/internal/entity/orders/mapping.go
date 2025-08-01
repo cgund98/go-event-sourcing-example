@@ -14,14 +14,14 @@ func (proj *OrderProjection) ToOrderDetails() *pb.OrderDetails {
 		Quantity:       int32(proj.Quantity),
 		TotalPrice:     proj.TotalPrice,
 		PaymentMethod:  proj.PaymentMethod,
-		ShippingStatus: mapStrToShippingStatus(proj.ShippingStatus),
-		PaymentStatus:  mapStrToPaymentStatus(proj.PaymentStatus),
+		ShippingStatus: MapStrToShippingStatus(proj.ShippingStatus),
+		PaymentStatus:  MapStrToPaymentStatus(proj.PaymentStatus),
 		CreatedAt:      timestamppb.New(proj.CreatedAt),
 		UpdatedAt:      timestamppb.New(proj.UpdatedAt),
 	}
 }
 
-func mapStrToShippingStatus(status string) pb.ShippingStatus {
+func MapStrToShippingStatus(status string) pb.ShippingStatus {
 	switch status {
 	case ShippingStatusWaitingForPayment:
 		return pb.ShippingStatus_SHIPPING_STATUS_WAITING_FOR_PAYMENT
@@ -38,7 +38,25 @@ func mapStrToShippingStatus(status string) pb.ShippingStatus {
 	return pb.ShippingStatus_SHIPPING_STATUS_UNSPECIFIED
 }
 
-func mapStrToPaymentStatus(status string) pb.PaymentStatus {
+func MapShippingStatusToStr(status pb.ShippingStatus) string {
+	switch status {
+	case pb.ShippingStatus_SHIPPING_STATUS_WAITING_FOR_PAYMENT:
+		return ShippingStatusWaitingForPayment
+	case pb.ShippingStatus_SHIPPING_STATUS_WAITING_FOR_SHIPMENT:
+		return ShippingStatusWaitingForShipment
+	case pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT:
+		return ShippingStatusInTransit
+	case pb.ShippingStatus_SHIPPING_STATUS_DELIVERED:
+		return ShippingStatusDelivered
+	case pb.ShippingStatus_SHIPPING_STATUS_CANCELLED:
+		return ShippingStatusCancelled
+	case pb.ShippingStatus_SHIPPING_STATUS_UNSPECIFIED:
+		return ShippingStatusUnspecified
+	}
+	return ""
+}
+
+func MapStrToPaymentStatus(status string) pb.PaymentStatus {
 	switch status {
 	case PaymentStatusPending:
 		return pb.PaymentStatus_PAYMENT_STATUS_PENDING

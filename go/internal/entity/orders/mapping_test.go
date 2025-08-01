@@ -65,7 +65,29 @@ func TestMapStrToShippingStatus(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := mapStrToShippingStatus(tc.status)
+			result := MapStrToShippingStatus(tc.status)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestMapShippingStatusToStr(t *testing.T) {
+	testCases := []struct {
+		name     string
+		status   pb.ShippingStatus
+		expected string
+	}{
+		{ShippingStatusWaitingForPayment, pb.ShippingStatus_SHIPPING_STATUS_WAITING_FOR_PAYMENT, ShippingStatusWaitingForPayment},
+		{ShippingStatusWaitingForShipment, pb.ShippingStatus_SHIPPING_STATUS_WAITING_FOR_SHIPMENT, ShippingStatusWaitingForShipment},
+		{ShippingStatusInTransit, pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT, ShippingStatusInTransit},
+		{ShippingStatusDelivered, pb.ShippingStatus_SHIPPING_STATUS_DELIVERED, ShippingStatusDelivered},
+		{ShippingStatusCancelled, pb.ShippingStatus_SHIPPING_STATUS_CANCELLED, ShippingStatusCancelled},
+		{ShippingStatusUnspecified, pb.ShippingStatus_SHIPPING_STATUS_UNSPECIFIED, ShippingStatusUnspecified},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := MapShippingStatusToStr(tc.status)
 			assert.Equal(t, tc.expected, result)
 		})
 	}
@@ -88,7 +110,7 @@ func TestMapStrToPaymentStatus(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := mapStrToPaymentStatus(tc.status)
+			result := MapStrToPaymentStatus(tc.status)
 			assert.Equal(t, tc.expected, result)
 		})
 	}

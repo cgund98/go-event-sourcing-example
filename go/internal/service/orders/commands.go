@@ -10,7 +10,7 @@ import (
 )
 
 func (s *OrderService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
-	return s.controller.PlaceOrder(ctx, req)
+	return WrapNonGrpcError(s.controller.PlaceOrder(ctx, req))
 }
 
 func (s *OrderService) CancelOrder(ctx context.Context, req *pb.CancelOrderRequest) (*pb.CancelOrderResponse, error) {
@@ -18,5 +18,5 @@ func (s *OrderService) CancelOrder(ctx context.Context, req *pb.CancelOrderReque
 }
 
 func (s *OrderService) UpdateOrderShippingStatus(ctx context.Context, req *pb.UpdateOrderShippingStatusRequest) (*pb.UpdateOrderShippingStatusResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateOrderShippingStatus not implemented")
+	return WrapNonGrpcError(s.controller.UpdateShippingStatus(ctx, req))
 }

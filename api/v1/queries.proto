@@ -2,18 +2,10 @@ syntax = "proto3";
 
 package events.v1;
 
+import "v1/events.proto";
 import "google/protobuf/timestamp.proto";
 
 option go_package = "v1/orders";
-
-enum ShippingStatus {
-    SHIPPING_STATUS_UNSPECIFIED = 0;
-    SHIPPING_STATUS_WAITING_FOR_PAYMENT = 1;
-    SHIPPING_STATUS_WAITING_FOR_SHIPMENT = 2;
-    SHIPPING_STATUS_IN_TRANSIT = 3;
-    SHIPPING_STATUS_DELIVERED = 4;
-    SHIPPING_STATUS_CANCELLED = 5;
-}
 
 enum PaymentStatus {
     PAYMENT_STATUS_UNSPECIFIED = 0;

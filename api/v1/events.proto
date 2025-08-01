@@ -6,6 +6,15 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "v1/orders";
 
+enum ShippingStatus {
+    SHIPPING_STATUS_UNSPECIFIED = 0;
+    SHIPPING_STATUS_WAITING_FOR_PAYMENT = 1;
+    SHIPPING_STATUS_WAITING_FOR_SHIPMENT = 2;
+    SHIPPING_STATUS_IN_TRANSIT = 3;
+    SHIPPING_STATUS_DELIVERED = 4;
+    SHIPPING_STATUS_CANCELLED = 5;
+}
+
 message OrderPlaced {
     string order_id = 1;
     google.protobuf.Timestamp timestamp = 2;
@@ -45,5 +54,5 @@ message OrderCancelled {
 message OrderShippingStatusUpdated {
     string order_id = 1;
     google.protobuf.Timestamp timestamp = 2;
-    string status = 3;
+    ShippingStatus status = 3;
 }

@@ -12,6 +12,7 @@ import (
 
 type Tx interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
 type Transactor interface {
@@ -70,6 +71,10 @@ type TestTx struct{}
 
 func (t *TestTx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return &TestTxResult{}, nil
+}
+
+func (t *TestTx) QueryContext(ctx context.Context, query string, args ...any) (*sqlx.Rows, error) {
+	return &sqlx.Rows{}, nil
 }
 
 type TestTransactor struct {

@@ -156,10 +156,8 @@ func applyOrderShippingStatusUpdatedToProjection(eventData []byte, currentProjec
 		return fmt.Errorf("failed to unmarshal order shipping status updated event: %w", err)
 	}
 
-	if event.Status == pb.UpdateShippingStatusOptions_UPDATE_SHIPPING_STATUS_OPTIONS_DELIVERED.String() {
-		currentProjection.ShippingStatus = ShippingStatusDelivered
-	} else if event.Status == pb.UpdateShippingStatusOptions_UPDATE_SHIPPING_STATUS_OPTIONS_IN_TRANSIT.String() {
-		currentProjection.ShippingStatus = ShippingStatusInTransit
+	if event.Status != pb.ShippingStatus_SHIPPING_STATUS_UNSPECIFIED {
+		currentProjection.ShippingStatus = MapShippingStatusToStr(event.Status)
 	}
 
 	currentProjection.UpdatedAt = event.Timestamp.AsTime()

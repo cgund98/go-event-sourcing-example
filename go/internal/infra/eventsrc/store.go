@@ -2,7 +2,9 @@ package eventsrc
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +31,8 @@ type Event struct {
 }
 
 type Store interface {
-	Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) error
+	Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) (string, error)
+	Remove(ctx context.Context, tx pg.Tx, eventId string) error
 	ListByAggregateID(ctx context.Context, aggregateId string, aggregateType string) ([]Event, error)
 }
 
@@ -53,7 +56,7 @@ func NewPostgresStore(db *sqlx.DB, table string) *PostgresStore {
 	return &PostgresStore{db: db, table: table}
 }
 
-func (s *PostgresStore) Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) error {
+func (s *PostgresStore) Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) (string, error) {
 	// Compile query
 	ds := pg.Dialect.Insert(s.table).Prepared(true).
 		Cols("aggregate_id", "aggregate_type", "event_type", "event_data").
@@ -64,14 +67,44 @@ func (s *PostgresStore) Persist(ctx context.Context, tx pg.Tx, args PersistEvent
 				"event_type":     args.EventType,
 				"event_data":     args.Data,
 			},
-		})
+		}).
+		Returning("event_id")
+
+	query, queryArgs, err := ds.ToSQL()
+	if err != nil {
+		return "", pg.ErrorDsl(err)
+	}
+
+	// Execute query
+	rows, err := tx.QueryContext(ctx, query, queryArgs...)
+	if err != nil {
+		return "", pg.ErrorDb(err)
+	}
+	defer rows.Close()
+
+	eventId := ""
+	if rows.Next() {
+		err := rows.Scan(&eventId)
+		if err != nil {
+			return "", pg.ErrorUnmarshal(err)
+		}
+	} else {
+		return "", errors.New("no event id returned")
+	}
+
+	return eventId, nil
+}
+
+func (s *PostgresStore) Remove(ctx context.Context, tx pg.Tx, eventId string) error {
+	// Compile query
+	ds := pg.Dialect.Delete(s.table).Prepared(true).
+		Where(goqu.Ex{"event_id": eventId})
 
 	query, queryArgs, err := ds.ToSQL()
 	if err != nil {
 		return pg.ErrorDsl(err)
 	}
 
-	// Execute query
 	_, err = tx.ExecContext(ctx, query, queryArgs...)
 	if err != nil {
 		return pg.ErrorDb(err)
@@ -123,7 +156,7 @@ func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{Events: make(map[string][]Event)}
 }
 
-func (s *InMemoryStore) Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) error {
+func (s *InMemoryStore) Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -140,6 +173,22 @@ func (s *InMemoryStore) Persist(ctx context.Context, tx pg.Tx, args PersistEvent
 		Data:          args.Data,
 		CreatedAt:     time.Now().UTC(),
 	})
+
+	return strconv.Itoa(eventID), nil
+}
+
+func (s *InMemoryStore) Remove(ctx context.Context, tx pg.Tx, eventId string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Iterate over each block of events and remove the event with the given eventId
+	for _, events := range s.Events {
+		for i, event := range events {
+			if strconv.Itoa(event.EventId) == eventId {
+				events = append(events[:i], events[i+1:]...)
+			}
+		}
+	}
 
 	return nil
 }
