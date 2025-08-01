@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # Buf - generate buf.lock
+  buf-mod-update:
+    image: bufbuild/buf:latest
+    container_name: buf-mod-update
+    working_dir: /workspace
+    volumes:
+      # Mount the entire project directory
+      - .:/workspace
+    environment:
+      - BUF_TOKEN=${BUF_TOKEN}
+    command: dep update
+
+  # Buf - generate stubs
+  buf-generate:
+    image: buf-with-grpc:local
+    build:
+      context: ./resources/docker
+      dockerfile: Dockerfile.buf
+    container_name: buf-generate
+    working_dir: /workspace
+    volumes:
+      # Mount the entire project directory
+      - .:/workspace
+    environment:
+      - BUF_TOKEN=${BUF_TOKEN}
+    command: generate
+
+  # Postgres
+  postgres:
+    image: postgres:16
+    ports:
+        - 25432:5432
+    networks:
+        - postgres-network
+    environment:
+        - POSTGRES_PASSWORD=postgres
+
+  # Flyway
+  flyway-pg:
+    image: flyway/flyway:10.14.0
+    depends_on:
+    - postgres
+    networks:
+        - postgres-network
+    environment:
+        - FLYWAY_URL=jdbc:postgresql://postgres:5432/postgres
+        - FLYWAY_USER=postgres
+        - FLYWAY_PASSWORD=postgres
+    command: migrate
+    volumes:
+        - ./resources/migrations/postgres:/flyway/sql:ro
+
+  # Kafka
+  kafka:
+    image: bitnami/kafka:3.4
+    hostname: kafka
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    volumes:
+      - "kafka_data:/bitnami"
+    environment:
+      - KAFKA_ENABLE_KRAFT=yes
+      # - KAFKA_KRAFT_CLUSTER_ID=228f04bc-0895-11ee-be56-0242ac120002
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://127.0.0.1:9092,EXTERNAL://kafka:9094
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@127.0.0.1:9093
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+      # - BITNAMI_DEBUG=yes
+      - KAFKA_CFG_NUM_PARTITIONS=2
+
+  # Kafka Topics Setup
+  kafka-topics:
+    image: bitnami/kafka:3.8
+    container_name: kafka-topics
+    depends_on:
+      - kafka
+    network_mode: host
+    volumes:
+      - ./scripts/create-topics.sh:/create-topics.sh:ro
+    command: ["/bin/bash", "/create-topics.sh"]
+    environment:
+      - KAFKA_CFG_BOOTSTRAP_SERVERS=kafka:9092
+
+networks:
+  postgres-network:
+    driver: bridge
+
+volumes:
+  kafka_data:

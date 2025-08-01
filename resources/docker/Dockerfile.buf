@@ -1,0 +1,8 @@
+FROM golang:1.24-alpine3.22 AS builder
+
+# Install protoc-gen-grpc-gateway
+RUN go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+
+FROM bufbuild/buf:latest
+
+COPY --from=builder /go/bin/protoc-gen-grpc-gateway /usr/local/bin/protoc-gen-grpc-gateway

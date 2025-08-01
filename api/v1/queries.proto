@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "v1/events.proto";
+import "google/protobuf/timestamp.proto";
+import "buf/validate/validate.proto";
+
+option go_package = "v1/orders";
+
+enum PaymentStatus {
+    PAYMENT_STATUS_UNSPECIFIED = 0;
+    PAYMENT_STATUS_PENDING = 1;
+    PAYMENT_STATUS_INITIATED = 2;
+    PAYMENT_STATUS_PAID = 3;
+    PAYMENT_STATUS_FAILED = 4;
+}
+
+message OrderDetails {
+    string order_id = 1;
+    string customer_id = 2;
+    string vendor_id = 3;
+    string product_id = 4;
+
+    google.protobuf.Timestamp created_at = 5;
+    google.protobuf.Timestamp updated_at = 6;
+
+    int32 quantity = 7;
+    double total_price = 8;
+
+    string payment_method = 9;
+    ShippingStatus shipping_status = 10;
+    PaymentStatus payment_status = 11;
+}
+
+message GetOrderRequest {
+    string order_id = 1;
+}
+
+message GetOrderResponse {
+    optional OrderDetails order = 1;
+}
+
+message ListOrdersRequest {
+    uint32 limit = 1 [
+        (buf.validate.field).uint32.gt = 0,
+        (buf.validate.field).uint32.lte = 100
+    ];
+    uint32 offset = 2 [
+        (buf.validate.field).uint32.gte = 0
+    ];
+}
+
+message ListOrdersItem {
+    string order_id = 1;
+    PaymentStatus payment_status = 2;
+    ShippingStatus shipping_status = 3;
+    google.protobuf.Timestamp created_at = 4;
+    google.protobuf.Timestamp updated_at = 5;
+}
+
+message ListOrdersResponse {
+    repeated ListOrdersItem orders = 1;
+}

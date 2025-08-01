@@ -1,0 +1,16 @@
+version: v2
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE
+deps:
+  - buf.build/googleapis/googleapis
+  - buf.build/bufbuild/protovalidate:v0.14.1
+
+modules:
+  - path: api
+
+plugins:
+  -

@@ -1,0 +1,18 @@
+version: v2
+managed:
+  enabled: true
+plugins:
+  ## Golang with gRPC
+  - remote: buf.build/protocolbuffers/go:v1.36.6
+    out: go/api
+    include_wkt: true
+    include_imports: true
+  ## gRPC for Golang
+  - remote: buf.build/grpc/go:v1.5.1
+    out: go/api
+
+  ## gRPC Gateway
+  - local: protoc-gen-grpc-gateway
+    out: go/api
+    opt:
+      - generate_unbound_methods=true

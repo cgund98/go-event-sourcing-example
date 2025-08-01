@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "v1/events.proto";
+import "buf/validate/validate.proto";
+
+option go_package = "v1/orders";
+
+message PlaceOrderRequest {
+    string customer_id = 1 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 255
+    ];
+    string vendor_id = 2 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 255
+    ];
+    string product_id = 3 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 255
+    ];
+    int32 quantity = 4 [
+        (buf.validate.field).int32.gt = 0
+    ];
+    double total_price = 5 [
+        (buf.validate.field).double.gt = 0
+    ];
+    string payment_method = 6 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 255
+    ];
+}
+
+message PlaceOrderResponse {
+    string order_id = 1;
+}
+
+message CancelOrderRequest {
+    string order_id = 1 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 255
+    ];
+    string reason = 2 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 1024
+    ];
+}
+
+message CancelOrderResponse {
+    string order_id = 1;
+}
+
+message UpdateOrderShippingStatusRequest {
+    string order_id = 1 [
+        (buf.validate.field).string.min_len = 1,
+        (buf.validate.field).string.max_len = 255
+    ];
+    ShippingStatus status = 2 [
+        (buf.validate.field).enum.defined_only = true
+    ];
+}
+
+message UpdateOrderShippingStatusResponse {
+    string order_id = 1;
+}

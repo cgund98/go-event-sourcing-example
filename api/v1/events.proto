@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "v1/orders";
+
+enum ShippingStatus {
+    SHIPPING_STATUS_UNSPECIFIED = 0;
+    SHIPPING_STATUS_WAITING_FOR_PAYMENT = 1;
+    SHIPPING_STATUS_WAITING_FOR_SHIPMENT = 2;
+    SHIPPING_STATUS_IN_TRANSIT = 3;
+    SHIPPING_STATUS_DELIVERED = 4;
+    SHIPPING_STATUS_CANCELLED = 5;
+}
+
+message OrderPlaced {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+
+    string vendor_id = 3;
+    string product_id = 4;
+
+    int32 quantity = 5;
+    double total_price = 6;
+
+    string customer_id = 7;
+    string payment_method = 8;
+}
+
+message OrderPaymentInitiated {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+}
+
+message OrderPaid {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+}
+
+message OrderPaymentFailed {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    string reason = 3;
+}
+
+message OrderCancelled {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    string reason = 3;
+}
+
+message OrderShippingStatusUpdated {
+    string order_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    ShippingStatus status = 3;
+}
