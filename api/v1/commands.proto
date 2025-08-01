@@ -44,9 +44,15 @@ message CancelOrderResponse {
     string order_id = 1;
 }
 
+enum UpdateShippingStatusOptions {
+    UPDATE_SHIPPING_STATUS_OPTIONS_UNSPECIFIED = 0;
+    UPDATE_SHIPPING_STATUS_OPTIONS_IN_TRANSIT = 1;
+    UPDATE_SHIPPING_STATUS_OPTIONS_DELIVERED = 2;
+}
+
 message UpdateOrderShippingStatusRequest {
     string order_id = 1;
-    string status = 2;
+    UpdateShippingStatusOptions status = 2;
 }
 
 message UpdateOrderShippingStatusResponse {

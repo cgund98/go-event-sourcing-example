@@ -2,16 +2,15 @@ package orders
 
 import (
 	pb "github.com/cgund98/go-eventsrc-example/api/v1/orders"
-
-	"github.com/cgund98/go-eventsrc-example/internal/infra/eventsrc"
+	orderctrl "github.com/cgund98/go-eventsrc-example/internal/entity/orders/controller"
 )
 
 type OrderService struct {
 	pb.UnimplementedOrderServiceServer
 
-	producer *eventsrc.TransactionProducer
+	controller *orderctrl.Controller
 }
 
-func NewOrderService(producer *eventsrc.TransactionProducer) *OrderService {
-	return &OrderService{producer: producer}
+func NewOrderService(controller *orderctrl.Controller) *OrderService {
+	return &OrderService{controller: controller}
 }

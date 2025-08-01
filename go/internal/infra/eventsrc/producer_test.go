@@ -13,30 +13,28 @@ func TestNewTransactionProducer(t *testing.T) {
 	store := NewInMemoryStore()
 	bus := NewInMemoryBus()
 	tx := &pg.TestTransactor{}
-	aggregateType := "orders"
 
-	producer := NewTransactionProducer(store, bus, tx, aggregateType)
+	producer := NewTransactionProducer(store, bus, tx)
 
 	assert.NotNil(t, producer)
 	assert.Equal(t, store, producer.store)
 	assert.Equal(t, bus, producer.bus)
 	assert.Equal(t, tx, producer.tx)
-	assert.Equal(t, aggregateType, producer.aggregateType)
 }
 
 func TestTransactionProducer_Send(t *testing.T) {
 	store := NewInMemoryStore()
 	bus := NewInMemoryBus()
 	tx := &pg.TestTransactor{}
-	aggregateType := "orders"
 
-	producer := NewTransactionProducer(store, bus, tx, aggregateType)
+	producer := NewTransactionProducer(store, bus, tx)
 	ctx := context.Background()
 
 	args := &SendArgs{
-		AggregateID: "order-123",
-		EventType:   "OrderCreated",
-		Value:       []byte(`{"amount": 100}`),
+		AggregateID:   "order-123",
+		AggregateType: "orders",
+		EventType:     "OrderCreated",
+		Value:         []byte(`{"amount": 100}`),
 	}
 
 	err := producer.Send(ctx, args)
@@ -46,13 +44,13 @@ func TestTransactionProducer_Send(t *testing.T) {
 	assert.Equal(t, 1, tx.NumCalls)
 
 	// Verify event was stored
-	events, err := store.ListByAggregateID(ctx, args.AggregateID)
+	events, err := store.ListByAggregateID(ctx, args.AggregateID, args.AggregateType)
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 
 	event := events[0]
-	assert.Equal(t, args.AggregateID, event.AggregateID)
-	assert.Equal(t, aggregateType, event.AggregateType)
+	assert.Equal(t, args.AggregateID, event.AggregateId)
+	assert.Equal(t, args.AggregateType, event.AggregateType)
 	assert.Equal(t, args.EventType, event.EventType)
 	assert.Equal(t, args.Value, event.Data)
 
@@ -66,27 +64,29 @@ func TestTransactionProducer_Send_MultipleEvents(t *testing.T) {
 	store := NewInMemoryStore()
 	bus := NewInMemoryBus()
 	tx := &pg.TestTransactor{}
-	aggregateType := "orders"
 
-	producer := NewTransactionProducer(store, bus, tx, aggregateType)
+	producer := NewTransactionProducer(store, bus, tx)
 	ctx := context.Background()
 
 	// Send multiple events
 	events := []*SendArgs{
 		{
-			AggregateID: "order-123",
-			EventType:   "OrderCreated",
-			Value:       []byte(`{"amount": 100}`),
+			AggregateID:   "order-123",
+			AggregateType: "orders",
+			EventType:     "OrderCreated",
+			Value:         []byte(`{"amount": 100}`),
 		},
 		{
-			AggregateID: "order-123",
-			EventType:   "OrderPaid",
-			Value:       []byte(`{"payment_method": "credit_card"}`),
+			AggregateID:   "order-123",
+			AggregateType: "orders",
+			EventType:     "OrderPaid",
+			Value:         []byte(`{"payment_method": "credit_card"}`),
 		},
 		{
-			AggregateID: "order-456",
-			EventType:   "OrderCreated",
-			Value:       []byte(`{"amount": 200}`),
+			AggregateID:   "order-456",
+			AggregateType: "orders",
+			EventType:     "OrderCreated",
+			Value:         []byte(`{"amount": 200}`),
 		},
 	}
 
@@ -99,11 +99,11 @@ func TestTransactionProducer_Send_MultipleEvents(t *testing.T) {
 	assert.Equal(t, 3, tx.NumCalls)
 
 	// Verify events were stored
-	order123Events, err := store.ListByAggregateID(ctx, "order-123")
+	order123Events, err := store.ListByAggregateID(ctx, "order-123", "orders")
 	require.NoError(t, err)
 	assert.Len(t, order123Events, 2)
 
-	order456Events, err := store.ListByAggregateID(ctx, "order-456")
+	order456Events, err := store.ListByAggregateID(ctx, "order-456", "orders")
 	require.NoError(t, err)
 	assert.Len(t, order456Events, 1)
 

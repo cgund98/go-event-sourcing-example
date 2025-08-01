@@ -8,6 +8,7 @@ import (
 	"os"
 
 	pb "github.com/cgund98/go-eventsrc-example/api/v1/orders"
+	orderctrl "github.com/cgund98/go-eventsrc-example/internal/entity/orders/controller"
 	"github.com/cgund98/go-eventsrc-example/internal/infra/config"
 	"github.com/cgund98/go-eventsrc-example/internal/infra/eventsrc"
 	"github.com/cgund98/go-eventsrc-example/internal/infra/logging"
@@ -69,8 +70,8 @@ func initKafkaWriter(config *config.Config) (*kafka.Writer, func(), error) {
 	return writer, cleanup, nil
 }
 
-func runGRPCServer(config *config.Config, producer *eventsrc.TransactionProducer) error {
-	orderService := orders.NewOrderService(producer)
+func runGRPCServer(config *config.Config, controller *orderctrl.Controller) error {
+	orderService := orders.NewOrderService(controller)
 
 	// Create a Protovalidate Validator
 	validator, err := protovalidate.New()
@@ -165,11 +166,13 @@ func main() {
 
 	logging.Logger.Info("Starting order service...")
 
+	// Initialize abstractions
 	store := eventsrc.NewPostgresStore(db, config.EventsTable)
 	bus := eventsrc.NewKafkaBus(kafkaWriter)
 	tx := pg.NewDbTransactor(db)
+	producer := eventsrc.NewTransactionProducer(store, bus, tx)
 
-	producer := eventsrc.NewTransactionProducer(store, bus, tx, config.EventsTopic)
+	controller := orderctrl.NewController(store, producer)
 
 	// Create context with cancellation for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -180,7 +183,7 @@ func main() {
 
 	// Start gRPC server
 	g.Go(func() error {
-		return runGRPCServer(config, producer)
+		return runGRPCServer(config, controller)
 	})
 
 	// Start gRPC-Gateway server

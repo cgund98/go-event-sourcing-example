@@ -14,14 +14,12 @@ enum ShippingStatus {
     SHIPPING_STATUS_DELIVERED = 4;
     SHIPPING_STATUS_CANCELLED = 5;
 }
-message GetOrderRequest {
-    string order_id = 1;
-}
 
-message GetOrderResponse {
+message OrderDetails {
     string order_id = 1;
     string customer_id = 2;
-    string product_id = 3;
+    string vendor_id = 3;
+    string product_id = 4;
 
     google.protobuf.Timestamp created_at = 5;
     google.protobuf.Timestamp updated_at = 6;
@@ -31,6 +29,14 @@ message GetOrderResponse {
 
     string payment_method = 9;
     ShippingStatus shipping_status = 10;
+}
+
+message GetOrderRequest {
+    string order_id = 1;
+}
+
+message GetOrderResponse {
+    optional OrderDetails order = 1;
 }
 
 message ListOrdersRequest {
