@@ -20,6 +20,12 @@ func validateUpdateShippingStatusRequest(req *pb.UpdateOrderShippingStatusReques
 	if projection.PaymentStatus != orders.PaymentStatusPaid {
 		return status.Errorf(codes.FailedPrecondition, "order has not been paid")
 	}
+
+	// Make sure they aren't cancelling the order
+	if req.Status == pb.ShippingStatus_SHIPPING_STATUS_CANCELLED {
+		return status.Errorf(codes.FailedPrecondition, "cannot cancel the order when updating shipping status. Please cancel the order instead.")
+	}
+
 	// Make sure that we cannot set the shipping status to a status that is lower than the current status
 	if int32(orders.MapStrToShippingStatus(projection.ShippingStatus)) > int32(req.Status) {
 		return status.Errorf(codes.FailedPrecondition, "cannot set shipping status to a lower status")

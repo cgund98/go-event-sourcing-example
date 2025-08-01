@@ -4,6 +4,7 @@ package events.v1;
 
 import "v1/events.proto";
 import "google/protobuf/timestamp.proto";
+import "buf/validate/validate.proto";
 
 option go_package = "v1/orders";
 
@@ -41,10 +42,23 @@ message GetOrderResponse {
 }
 
 message ListOrdersRequest {
-    int32 limit = 1;
-    int32 offset = 2;
+    uint32 limit = 1 [
+        (buf.validate.field).uint32.gt = 0,
+        (buf.validate.field).uint32.lte = 100
+    ];
+    uint32 offset = 2 [
+        (buf.validate.field).uint32.gte = 0
+    ];
+}
+
+message ListOrdersItem {
+    string order_id = 1;
+    PaymentStatus payment_status = 2;
+    ShippingStatus shipping_status = 3;
+    google.protobuf.Timestamp created_at = 4;
+    google.protobuf.Timestamp updated_at = 5;
 }
 
 message ListOrdersResponse {
-    repeated GetOrderResponse orders = 1;
+    repeated ListOrdersItem orders = 1;
 }

@@ -117,7 +117,8 @@ func (s *PostgresStore) ListByAggregateID(ctx context.Context, aggregateId strin
 	// Compile query
 	ds := pg.Dialect.From(s.table).Prepared(true).
 		Select(&Event{}).
-		Where(goqu.Ex{"aggregate_id": serializeAggregateId(aggregateId, aggregateType)})
+		Where(goqu.Ex{"aggregate_id": serializeAggregateId(aggregateId, aggregateType)}).
+		Order(goqu.I("event_id").Asc())
 
 	query, queryArgs, err := ds.ToSQL()
 	if err != nil {

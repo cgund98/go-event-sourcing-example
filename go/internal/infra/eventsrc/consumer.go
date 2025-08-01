@@ -11,10 +11,17 @@ import (
 
 const ConsumerRetryDelay = 5 * time.Second
 
+type ConsumeArgs struct {
+	AggregateID   string
+	AggregateType string
+	EventType     string
+	Data          []byte
+}
+
 // Consumer is an interface for consuming events from the event message bus.
 type Consumer interface {
 	Name() string
-	Consume(ctx context.Context, eventType string, eventData []byte) error
+	Consume(ctx context.Context, args ConsumeArgs) error
 }
 
 // Reader is an interface for reading messages from Kafka.
@@ -42,9 +49,27 @@ func runKafkaConsumerOnce(ctx context.Context, reader Reader, consumer Consumer)
 
 	logging.Logger.Debug("Received event", "eventType", parseEventType(event), "consumer", consumer.Name())
 
-	eventType := parseEventType(event)
+	eventType, err := GetEventTypeFromMessage(&event)
+	if err != nil {
+		return err
+	}
 
-	err = consumer.Consume(ctx, eventType, event.Value)
+	aggregateID, err := GetAggregateIDFromMessage(&event)
+	if err != nil {
+		return err
+	}
+
+	aggregateType, err := GetAggregateTypeFromMessage(&event)
+	if err != nil {
+		return err
+	}
+
+	err = consumer.Consume(ctx, ConsumeArgs{
+		AggregateID:   aggregateID,
+		AggregateType: aggregateType,
+		EventType:     eventType,
+		Data:          event.Value,
+	})
 	if err != nil {
 		logging.Logger.Error("error consuming event", "error", err)
 		return err

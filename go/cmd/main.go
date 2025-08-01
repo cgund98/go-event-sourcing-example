@@ -8,14 +8,16 @@ import (
 	"os"
 
 	pb "github.com/cgund98/go-eventsrc-example/api/v1/orders"
+	orderent "github.com/cgund98/go-eventsrc-example/internal/entity/orders"
 	ordercons "github.com/cgund98/go-eventsrc-example/internal/entity/orders/consumers"
 	orderctrl "github.com/cgund98/go-eventsrc-example/internal/entity/orders/controller"
+	"github.com/cgund98/go-eventsrc-example/internal/service/orders"
 
 	"github.com/cgund98/go-eventsrc-example/internal/infra/config"
 	"github.com/cgund98/go-eventsrc-example/internal/infra/eventsrc"
 	"github.com/cgund98/go-eventsrc-example/internal/infra/logging"
 	"github.com/cgund98/go-eventsrc-example/internal/infra/pg"
-	"github.com/cgund98/go-eventsrc-example/internal/service/orders"
+	grpcutils "github.com/cgund98/go-eventsrc-example/internal/service/grpc"
 
 	"buf.build/go/protovalidate"
 	protovalidate_middleware "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/protovalidate"
@@ -72,7 +74,7 @@ func initKafkaWriter(config *config.Config) (*kafka.Writer, func(), error) {
 	return writer, cleanup, nil
 }
 
-func runGRPCServer(config *config.Config, controller *orderctrl.Controller) error {
+func runGRPCServer(ctx context.Context, config *config.Config, controller *orderctrl.Controller) error {
 	orderService := orders.NewOrderService(controller)
 
 	// Create a Protovalidate Validator
@@ -84,7 +86,12 @@ func runGRPCServer(config *config.Config, controller *orderctrl.Controller) erro
 	// Use the protovalidate_middleware interceptor provided by grpc-ecosystem
 	interceptor := protovalidate_middleware.UnaryServerInterceptor(validator)
 
-	server := grpc.NewServer(grpc.UnaryInterceptor(interceptor))
+	server := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			interceptor,
+			grpcutils.LoggerInterceptor,
+		),
+	)
 	pb.RegisterOrderServiceServer(server, orderService)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", config.GrpcPort))
@@ -95,8 +102,8 @@ func runGRPCServer(config *config.Config, controller *orderctrl.Controller) erro
 
 	logging.Logger.Info("Starting gRPC server...", "address", lis.Addr().String())
 
-	// Start gRPC server
 	if err := server.Serve(lis); err != nil {
+		logging.Logger.Error(fmt.Sprintf("failed to serve gRPC: %v", err))
 		return fmt.Errorf("failed to serve gRPC: %v", err)
 	}
 
@@ -174,6 +181,20 @@ func runPaymentProcessorConsumer(ctx context.Context, config *config.Config, con
 	return eventsrc.RunKafkaConsumer(ctx, reader, consumer, eventsrc.RunKafkaConsumerOptions{})
 }
 
+func runProjectionIndexerConsumer(ctx context.Context, config *config.Config, controller *orderctrl.Controller) error {
+
+	reader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{fmt.Sprintf("%s:%d", config.KafkaHost, config.KafkaPort)},
+		Topic:   config.EventsTopic,
+		GroupID: ordercons.ConsumerNameProjectionIndexer,
+	})
+	defer reader.Close()
+
+	logging.Logger.Info("Starting projection indexer consumer...")
+
+	consumer := ordercons.NewProjectionIndexerConsumer(controller)
+	return eventsrc.RunKafkaConsumer(ctx, reader, consumer, eventsrc.RunKafkaConsumerOptions{})
+}
 func main() {
 	// Load Config
 	config, err := config.LoadConfig()
@@ -202,11 +223,12 @@ func main() {
 
 	// Initialize abstractions
 	store := eventsrc.NewPostgresStore(db, config.EventsTable)
+	projectionRepo := orderent.NewPgProjectionRepo(db)
 	bus := eventsrc.NewKafkaBus(kafkaWriter)
 	tx := pg.NewDbTransactor(db)
 	producer := eventsrc.NewTransactionProducer(store, bus, tx)
 
-	controller := orderctrl.NewController(store, producer)
+	controller := orderctrl.NewController(store, producer, projectionRepo, tx)
 
 	// Create context with cancellation for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -217,7 +239,7 @@ func main() {
 
 	// Start gRPC server
 	g.Go(func() error {
-		return runGRPCServer(config, controller)
+		return runGRPCServer(ctx, config, controller)
 	})
 
 	// Start gRPC-Gateway server
@@ -231,6 +253,9 @@ func main() {
 	})
 	g.Go(func() error {
 		return runPaymentProcessorConsumer(ctx, config, controller)
+	})
+	g.Go(func() error {
+		return runProjectionIndexerConsumer(ctx, config, controller)
 	})
 
 	// Wait for all goroutines to finish

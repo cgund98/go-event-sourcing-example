@@ -2,12 +2,15 @@ package eventsrc
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/segmentio/kafka-go"
 )
 
 const KafkaWriteTimeout = 10 * time.Second
+const KafkaHeaderAggregateID = "aggregate-id"
+const KafkaHeaderAggregateType = "aggregate-type"
 const KafkaHeaderEventType = "event-type"
 
 type Bus interface {
@@ -15,13 +18,10 @@ type Bus interface {
 }
 
 type PublishArgs struct {
-	EventType string
-	Value     []byte
-}
-
-type BusEvent struct {
-	EventType string
-	Data      []byte
+	AggregateID   string
+	AggregateType string
+	EventType     string
+	Value         []byte
 }
 
 /** Kafka Bus */
@@ -41,6 +41,14 @@ func (b *KafkaBus) Publish(ctx context.Context, args *PublishArgs) error {
 				Key:   KafkaHeaderEventType,
 				Value: []byte(args.EventType),
 			},
+			{
+				Key:   KafkaHeaderAggregateID,
+				Value: []byte(args.AggregateID),
+			},
+			{
+				Key:   KafkaHeaderAggregateType,
+				Value: []byte(args.AggregateType),
+			},
 		},
 		Value: args.Value,
 	}
@@ -56,7 +64,38 @@ func (b *KafkaBus) Publish(ctx context.Context, args *PublishArgs) error {
 	return err
 }
 
+func GetAggregateIDFromMessage(msg *kafka.Message) (string, error) {
+	for _, header := range msg.Headers {
+		if header.Key == KafkaHeaderAggregateID {
+			return string(header.Value), nil
+		}
+	}
+	return "", fmt.Errorf("aggregate id not found in message")
+}
+
+func GetAggregateTypeFromMessage(msg *kafka.Message) (string, error) {
+	for _, header := range msg.Headers {
+		if header.Key == KafkaHeaderAggregateType {
+			return string(header.Value), nil
+		}
+	}
+	return "", fmt.Errorf("aggregate type not found in message")
+}
+
+func GetEventTypeFromMessage(msg *kafka.Message) (string, error) {
+	for _, header := range msg.Headers {
+		if header.Key == KafkaHeaderEventType {
+			return string(header.Value), nil
+		}
+	}
+	return "", fmt.Errorf("event type not found in message")
+}
+
 /** In Memory Bus */
+type BusEvent struct {
+	EventType string
+	Data      []byte
+}
 
 type InMemoryBus struct {
 	Events []BusEvent

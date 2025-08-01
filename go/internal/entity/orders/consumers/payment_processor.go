@@ -7,6 +7,7 @@ import (
 	pb "github.com/cgund98/go-eventsrc-example/api/v1/orders"
 	"github.com/cgund98/go-eventsrc-example/internal/entity/orders"
 	"github.com/cgund98/go-eventsrc-example/internal/entity/orders/controller"
+	"github.com/cgund98/go-eventsrc-example/internal/infra/eventsrc"
 	"github.com/cgund98/go-eventsrc-example/internal/infra/logging"
 
 	"google.golang.org/protobuf/proto"
@@ -32,16 +33,20 @@ func (c *PaymentProcessorConsumer) Name() string {
 	return ConsumerNamePaymentProcessor
 }
 
-func (c *PaymentProcessorConsumer) Consume(ctx context.Context, eventType string, eventData []byte) error {
+func (c *PaymentProcessorConsumer) Consume(ctx context.Context, args eventsrc.ConsumeArgs) error {
+
+	if args.AggregateType != orders.AggregateTypeOrder {
+		return nil
+	}
 
 	// If the event type is not OrderPaymentInitiated, don't do anything
-	if eventType != orders.EventTypeOrderPaymentInitiated {
+	if args.EventType != orders.EventTypeOrderPaymentInitiated {
 		return nil
 	}
 
 	// Unmarshal the event data
 	var orderPlacedEvent pb.OrderPaymentInitiated
-	err := proto.Unmarshal(eventData, &orderPlacedEvent)
+	err := proto.Unmarshal(args.Data, &orderPlacedEvent)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal order placed event: %w", err)
 	}

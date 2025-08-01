@@ -188,7 +188,9 @@ func TestTransactionProducer_Send_BusPublishFailure(t *testing.T) {
 	})).Return("event-123", nil)
 
 	mockBus.On("Publish", mock.Anything, mock.MatchedBy(func(publishArgs *PublishArgs) bool {
-		return publishArgs.EventType == args.EventType &&
+		return publishArgs.AggregateID == args.AggregateID &&
+			publishArgs.AggregateType == args.AggregateType &&
+			publishArgs.EventType == args.EventType &&
 			string(publishArgs.Value) == string(args.Value)
 	})).Return(errors.New("kafka connection failed"))
 

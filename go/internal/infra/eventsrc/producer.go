@@ -57,8 +57,10 @@ func (p *TransactionProducer) Send(ctx context.Context, args *SendArgs) error {
 	}
 
 	err = p.bus.Publish(ctx, &PublishArgs{
-		EventType: args.EventType,
-		Value:     args.Value,
+		AggregateID:   args.AggregateID,
+		AggregateType: args.AggregateType,
+		EventType:     args.EventType,
+		Value:         args.Value,
 	})
 
 	// If the event is not published, remove it from the store and return an error.

@@ -19,8 +19,8 @@ func (m *MockConsumer) Name() string {
 	return "mock-consumer"
 }
 
-func (m *MockConsumer) Consume(ctx context.Context, eventType string, eventData []byte) error {
-	callArgs := m.Called(ctx, eventType, eventData)
+func (m *MockConsumer) Consume(ctx context.Context, args ConsumeArgs) error {
+	callArgs := m.Called(ctx, args)
 	return callArgs.Error(0)
 }
 
@@ -44,17 +44,23 @@ func TestRunKafkaConsumerOnce(t *testing.T) {
 		mockReader := &MockReader{}
 		mockConsumer := &MockConsumer{}
 
-		// Create a test message with event type header
 		msg := kafka.Message{
 			Value: []byte("test event data"),
 			Headers: []kafka.Header{
 				{Key: KafkaHeaderEventType, Value: []byte("test_event")},
+				{Key: KafkaHeaderAggregateID, Value: []byte("agg_id")},
+				{Key: KafkaHeaderAggregateType, Value: []byte("agg_type")},
 			},
 		}
 
 		mockReader.On("FetchMessage", mock.Anything).Return(msg, nil)
-		mockConsumer.On("Consume", mock.Anything, "test_event", []byte("test event data")).Return(nil)
-		mockReader.On("CommitMessages", mock.Anything, []kafka.Message{msg}).Return(nil)
+		mockConsumer.On("Consume", mock.Anything, ConsumeArgs{
+			AggregateID:   "agg_id",
+			AggregateType: "agg_type",
+			EventType:     "test_event",
+			Data:          []byte("test event data"),
+		}).Return(nil)
+		mockReader.On("CommitMessages", mock.Anything, mock.Anything).Return(nil)
 
 		err := runKafkaConsumerOnce(context.Background(), mockReader, mockConsumer)
 
@@ -85,11 +91,18 @@ func TestRunKafkaConsumerOnce(t *testing.T) {
 			Value: []byte("test event data"),
 			Headers: []kafka.Header{
 				{Key: KafkaHeaderEventType, Value: []byte("test_event")},
+				{Key: KafkaHeaderAggregateID, Value: []byte("agg_id")},
+				{Key: KafkaHeaderAggregateType, Value: []byte("agg_type")},
 			},
 		}
 
 		mockReader.On("FetchMessage", mock.Anything).Return(msg, nil)
-		mockConsumer.On("Consume", mock.Anything, "test_event", []byte("test event data")).Return(errors.New("consumer error"))
+		mockConsumer.On("Consume", mock.Anything, ConsumeArgs{
+			AggregateID:   "agg_id",
+			AggregateType: "agg_type",
+			EventType:     "test_event",
+			Data:          []byte("test event data"),
+		}).Return(errors.New("consumer error"))
 
 		err := runKafkaConsumerOnce(context.Background(), mockReader, mockConsumer)
 
@@ -97,7 +110,6 @@ func TestRunKafkaConsumerOnce(t *testing.T) {
 		assert.Contains(t, err.Error(), "consumer error")
 		mockReader.AssertExpectations(t)
 		mockConsumer.AssertExpectations(t)
-		// Should not commit on consumer error
 		mockReader.AssertNotCalled(t, "CommitMessages")
 	})
 
@@ -109,12 +121,19 @@ func TestRunKafkaConsumerOnce(t *testing.T) {
 			Value: []byte("test event data"),
 			Headers: []kafka.Header{
 				{Key: KafkaHeaderEventType, Value: []byte("test_event")},
+				{Key: KafkaHeaderAggregateID, Value: []byte("agg_id")},
+				{Key: KafkaHeaderAggregateType, Value: []byte("agg_type")},
 			},
 		}
 
 		mockReader.On("FetchMessage", mock.Anything).Return(msg, nil)
-		mockConsumer.On("Consume", mock.Anything, "test_event", []byte("test event data")).Return(nil)
-		mockReader.On("CommitMessages", mock.Anything, []kafka.Message{msg}).Return(errors.New("commit error"))
+		mockConsumer.On("Consume", mock.Anything, ConsumeArgs{
+			AggregateID:   "agg_id",
+			AggregateType: "agg_type",
+			EventType:     "test_event",
+			Data:          []byte("test event data"),
+		}).Return(nil)
+		mockReader.On("CommitMessages", mock.Anything, mock.Anything).Return(errors.New("commit error"))
 
 		err := runKafkaConsumerOnce(context.Background(), mockReader, mockConsumer)
 
@@ -129,19 +148,65 @@ func TestRunKafkaConsumerOnce(t *testing.T) {
 		mockConsumer := &MockConsumer{}
 
 		msg := kafka.Message{
-			Value:   []byte("test event data"),
-			Headers: []kafka.Header{}, // No event type header
+			Value: []byte("test event data"),
+			Headers: []kafka.Header{
+				{Key: KafkaHeaderAggregateID, Value: []byte("agg_id")},
+				{Key: KafkaHeaderAggregateType, Value: []byte("agg_type")},
+			},
 		}
 
 		mockReader.On("FetchMessage", mock.Anything).Return(msg, nil)
-		mockConsumer.On("Consume", mock.Anything, "", []byte("test event data")).Return(nil)
-		mockReader.On("CommitMessages", mock.Anything, []kafka.Message{msg}).Return(nil)
 
 		err := runKafkaConsumerOnce(context.Background(), mockReader, mockConsumer)
 
-		assert.NoError(t, err)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "event type not found in message")
 		mockReader.AssertExpectations(t)
-		mockConsumer.AssertExpectations(t)
+		mockConsumer.AssertNotCalled(t, "Consume")
+	})
+
+	t.Run("missing aggregate id header", func(t *testing.T) {
+		mockReader := &MockReader{}
+		mockConsumer := &MockConsumer{}
+
+		msg := kafka.Message{
+			Value: []byte("test event data"),
+			Headers: []kafka.Header{
+				{Key: KafkaHeaderEventType, Value: []byte("test_event")},
+				{Key: KafkaHeaderAggregateType, Value: []byte("agg_type")},
+			},
+		}
+
+		mockReader.On("FetchMessage", mock.Anything).Return(msg, nil)
+
+		err := runKafkaConsumerOnce(context.Background(), mockReader, mockConsumer)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "aggregate id not found in message")
+		mockReader.AssertExpectations(t)
+		mockConsumer.AssertNotCalled(t, "Consume")
+	})
+
+	t.Run("missing aggregate type header", func(t *testing.T) {
+		mockReader := &MockReader{}
+		mockConsumer := &MockConsumer{}
+
+		msg := kafka.Message{
+			Value: []byte("test event data"),
+			Headers: []kafka.Header{
+				{Key: KafkaHeaderEventType, Value: []byte("test_event")},
+				{Key: KafkaHeaderAggregateID, Value: []byte("agg_id")},
+			},
+		}
+
+		mockReader.On("FetchMessage", mock.Anything).Return(msg, nil)
+
+		err := runKafkaConsumerOnce(context.Background(), mockReader, mockConsumer)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "aggregate type not found in message")
+		mockReader.AssertExpectations(t)
+		mockConsumer.AssertNotCalled(t, "Consume")
 	})
 }
 

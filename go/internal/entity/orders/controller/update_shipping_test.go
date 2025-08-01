@@ -249,6 +249,25 @@ func TestValidateUpdateShippingStatusRequest(t *testing.T) {
 		assert.Contains(t, st.Message(), "order has not been paid")
 	})
 
+	t.Run("cancelling the order", func(t *testing.T) {
+		projection := &orders.OrderProjection{
+			PaymentStatus:  orders.PaymentStatusPaid,
+			ShippingStatus: orders.ShippingStatusInTransit,
+		}
+
+		request := &pb.UpdateOrderShippingStatusRequest{
+			OrderId: "order-123",
+			Status:  pb.ShippingStatus_SHIPPING_STATUS_CANCELLED,
+		}
+
+		err := validateUpdateShippingStatusRequest(request, projection)
+		assert.Error(t, err)
+		st, ok := status.FromError(err)
+		assert.True(t, ok)
+		assert.Equal(t, codes.FailedPrecondition, st.Code())
+		assert.Contains(t, st.Message(), "cannot cancel the order when updating shipping status. Please cancel the order instead.")
+	})
+
 	t.Run("lower shipping status", func(t *testing.T) {
 		projection := &orders.OrderProjection{
 			PaymentStatus:  orders.PaymentStatusPaid,
