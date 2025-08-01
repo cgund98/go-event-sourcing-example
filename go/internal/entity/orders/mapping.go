@@ -15,6 +15,7 @@ func (proj *OrderProjection) ToOrderDetails() *pb.OrderDetails {
 		TotalPrice:     proj.TotalPrice,
 		PaymentMethod:  proj.PaymentMethod,
 		ShippingStatus: mapStrToShippingStatus(proj.ShippingStatus),
+		PaymentStatus:  mapStrToPaymentStatus(proj.PaymentStatus),
 		CreatedAt:      timestamppb.New(proj.CreatedAt),
 		UpdatedAt:      timestamppb.New(proj.UpdatedAt),
 	}
@@ -35,4 +36,19 @@ func mapStrToShippingStatus(status string) pb.ShippingStatus {
 	}
 
 	return pb.ShippingStatus_SHIPPING_STATUS_UNSPECIFIED
+}
+
+func mapStrToPaymentStatus(status string) pb.PaymentStatus {
+	switch status {
+	case PaymentStatusPending:
+		return pb.PaymentStatus_PAYMENT_STATUS_PENDING
+	case PaymentStatusInitiated:
+		return pb.PaymentStatus_PAYMENT_STATUS_INITIATED
+	case PaymentStatusPaid:
+		return pb.PaymentStatus_PAYMENT_STATUS_PAID
+	case PaymentStatusFailed:
+		return pb.PaymentStatus_PAYMENT_STATUS_FAILED
+	}
+
+	return pb.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED
 }

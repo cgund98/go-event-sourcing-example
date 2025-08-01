@@ -15,6 +15,14 @@ enum ShippingStatus {
     SHIPPING_STATUS_CANCELLED = 5;
 }
 
+enum PaymentStatus {
+    PAYMENT_STATUS_UNSPECIFIED = 0;
+    PAYMENT_STATUS_PENDING = 1;
+    PAYMENT_STATUS_INITIATED = 2;
+    PAYMENT_STATUS_PAID = 3;
+    PAYMENT_STATUS_FAILED = 4;
+}
+
 message OrderDetails {
     string order_id = 1;
     string customer_id = 2;
@@ -29,6 +37,7 @@ message OrderDetails {
 
     string payment_method = 9;
     ShippingStatus shipping_status = 10;
+    PaymentStatus payment_status = 11;
 }
 
 message GetOrderRequest {

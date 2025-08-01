@@ -38,6 +38,7 @@ func TestOrderProjection_ToOrderDetails(t *testing.T) {
 	assert.Equal(t, 99.99, orderDetails.TotalPrice)
 	assert.Equal(t, "credit_card", orderDetails.PaymentMethod)
 	assert.Equal(t, pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT, orderDetails.ShippingStatus)
+	assert.Equal(t, pb.PaymentStatus_PAYMENT_STATUS_PAID, orderDetails.PaymentStatus)
 
 	// Verify timestamps
 	require.NotNil(t, orderDetails.CreatedAt)
@@ -65,6 +66,29 @@ func TestMapStrToShippingStatus(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			result := mapStrToShippingStatus(tc.status)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestMapStrToPaymentStatus(t *testing.T) {
+	testCases := []struct {
+		name     string
+		status   string
+		expected pb.PaymentStatus
+	}{
+		{PaymentStatusPending, PaymentStatusPending, pb.PaymentStatus_PAYMENT_STATUS_PENDING},
+		{PaymentStatusInitiated, PaymentStatusInitiated, pb.PaymentStatus_PAYMENT_STATUS_INITIATED},
+		{PaymentStatusPaid, PaymentStatusPaid, pb.PaymentStatus_PAYMENT_STATUS_PAID},
+		{PaymentStatusFailed, PaymentStatusFailed, pb.PaymentStatus_PAYMENT_STATUS_FAILED},
+		{"unknown", "unknown_status", pb.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED},
+		{"empty", "", pb.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED},
+		{"uppercase", "PENDING", pb.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := mapStrToPaymentStatus(tc.status)
 			assert.Equal(t, tc.expected, result)
 		})
 	}

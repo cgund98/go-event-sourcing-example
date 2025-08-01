@@ -8,7 +8,9 @@ import (
 	"os"
 
 	pb "github.com/cgund98/go-eventsrc-example/api/v1/orders"
+	ordercons "github.com/cgund98/go-eventsrc-example/internal/entity/orders/consumers"
 	orderctrl "github.com/cgund98/go-eventsrc-example/internal/entity/orders/controller"
+
 	"github.com/cgund98/go-eventsrc-example/internal/infra/config"
 	"github.com/cgund98/go-eventsrc-example/internal/infra/eventsrc"
 	"github.com/cgund98/go-eventsrc-example/internal/infra/logging"
@@ -140,6 +142,38 @@ func runGatewayServer(ctx context.Context, config *config.Config) error {
 	return nil
 }
 
+// runPaymentInitializerConsumer runs the payment initializer consumer.
+func runPaymentInitializerConsumer(ctx context.Context, config *config.Config, controller *orderctrl.Controller) error {
+
+	reader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{fmt.Sprintf("%s:%d", config.KafkaHost, config.KafkaPort)},
+		Topic:   config.EventsTopic,
+		GroupID: ordercons.ConsumerNamePaymentInitializer,
+	})
+	defer reader.Close()
+
+	logging.Logger.Info("Starting payment initializer consumer...")
+
+	consumer := ordercons.NewPaymentInitializerConsumer(controller)
+	return eventsrc.RunKafkaConsumer(ctx, reader, consumer, eventsrc.RunKafkaConsumerOptions{})
+}
+
+// runPaymentProcessorConsumer runs the payment processor consumer.
+func runPaymentProcessorConsumer(ctx context.Context, config *config.Config, controller *orderctrl.Controller) error {
+
+	reader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: []string{fmt.Sprintf("%s:%d", config.KafkaHost, config.KafkaPort)},
+		Topic:   config.EventsTopic,
+		GroupID: ordercons.ConsumerNamePaymentProcessor,
+	})
+	defer reader.Close()
+
+	logging.Logger.Info("Starting payment processor consumer...")
+
+	consumer := ordercons.NewPaymentProcessorConsumer(controller)
+	return eventsrc.RunKafkaConsumer(ctx, reader, consumer, eventsrc.RunKafkaConsumerOptions{})
+}
+
 func main() {
 	// Load Config
 	config, err := config.LoadConfig()
@@ -189,6 +223,14 @@ func main() {
 	// Start gRPC-Gateway server
 	g.Go(func() error {
 		return runGatewayServer(ctx, config)
+	})
+
+	// Consumers
+	g.Go(func() error {
+		return runPaymentInitializerConsumer(ctx, config, controller)
+	})
+	g.Go(func() error {
+		return runPaymentProcessorConsumer(ctx, config, controller)
 	})
 
 	// Wait for all goroutines to finish
