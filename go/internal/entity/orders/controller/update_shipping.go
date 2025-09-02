@@ -36,7 +36,7 @@ func validateUpdateShippingStatusRequest(req *pb.UpdateOrderShippingStatusReques
 func (c *Controller) UpdateShippingStatus(ctx context.Context, req *pb.UpdateOrderShippingStatusRequest) (*pb.UpdateOrderShippingStatusResponse, error) {
 
 	// Fetch the order projection
-	orderProjection, err := c.GetProjection(ctx, req.OrderId)
+	orderProjection, curSeqNum, err := c.GetProjection(ctx, req.OrderId)
 	if err != nil {
 		return nil, err
 	}
@@ -61,10 +61,11 @@ func (c *Controller) UpdateShippingStatus(ctx context.Context, req *pb.UpdateOrd
 	}
 
 	err = c.producer.Send(ctx, &eventsrc.SendArgs{
-		AggregateID:   req.OrderId,
-		AggregateType: orders.AggregateTypeOrder,
-		EventType:     orders.EventTypeOrderShippingStatusUpdated,
-		Value:         orderShippingStatusUpdatedEventBytes,
+		SequenceNumber: curSeqNum + 1,
+		AggregateID:    req.OrderId,
+		AggregateType:  orders.AggregateTypeOrder,
+		EventType:      orders.EventTypeOrderShippingStatusUpdated,
+		Value:          orderShippingStatusUpdatedEventBytes,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to send order shipping status updated event: %w", err)

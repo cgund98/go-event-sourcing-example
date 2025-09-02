@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	pb "github.com/cgund98/go-eventsrc-example/api/v1/orders"
 	"github.com/cgund98/go-eventsrc-example/internal/entity/orders"
@@ -32,7 +33,7 @@ func validateInitPendingPaymentRequest(projection *orders.OrderProjection) error
 func (c *Controller) InitializePendingPayment(ctx context.Context, orderId string) error {
 
 	// Fetch the order projection
-	orderProjection, err := c.GetProjection(ctx, orderId)
+	orderProjection, curSeqNum, err := c.GetProjection(ctx, orderId)
 	if err != nil {
 		return err
 	}
@@ -52,17 +53,18 @@ func (c *Controller) InitializePendingPayment(ctx context.Context, orderId strin
 
 	orderPaymentInitiatedEventBytes, err := proto.Marshal(orderPaymentInitiatedEvent)
 	if err != nil {
-		return ErrInternal
+		return fmt.Errorf("failed to marshal event: %w", err)
 	}
 
 	err = c.producer.Send(ctx, &eventsrc.SendArgs{
-		AggregateID:   orderPaymentInitiatedEvent.OrderId,
-		AggregateType: orders.AggregateTypeOrder,
-		EventType:     orders.EventTypeOrderPaymentInitiated,
-		Value:         orderPaymentInitiatedEventBytes,
+		SequenceNumber: curSeqNum + 1,
+		AggregateID:    orderPaymentInitiatedEvent.OrderId,
+		AggregateType:  orders.AggregateTypeOrder,
+		EventType:      orders.EventTypeOrderPaymentInitiated,
+		Value:          orderPaymentInitiatedEventBytes,
 	})
 	if err != nil {
-		return ErrInternal
+		return fmt.Errorf("failed to send event: %w", err)
 	}
 
 	return nil

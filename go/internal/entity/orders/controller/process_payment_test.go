@@ -8,7 +8,6 @@ import (
 	pb "github.com/cgund98/go-eventsrc-example/api/v1/orders"
 	"github.com/cgund98/go-eventsrc-example/internal/entity/orders"
 	"github.com/cgund98/go-eventsrc-example/internal/infra/eventsrc"
-	"github.com/cgund98/go-eventsrc-example/internal/infra/pg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc/codes"
@@ -17,54 +16,35 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// MockStore is a mock implementation of eventsrc.Store
-type MockStore struct {
-	mock.Mock
-}
-
-func (m *MockStore) Persist(ctx context.Context, tx pg.Tx, args eventsrc.PersistEventArgs) (int, error) {
-	callArgs := m.Called(ctx, tx, args)
-	return callArgs.Int(0), callArgs.Error(1)
-}
-
-func (m *MockStore) Remove(ctx context.Context, tx pg.Tx, eventId int) error {
-	callArgs := m.Called(ctx, tx, eventId)
-	return callArgs.Error(0)
-}
-
-func (m *MockStore) ListByAggregateID(ctx context.Context, aggregateID, aggregateType string) ([]eventsrc.Event, error) {
-	callArgs := m.Called(ctx, aggregateID, aggregateType)
-	return callArgs.Get(0).([]eventsrc.Event), callArgs.Error(1)
-}
-
-func createValidOrderPlacedEvent(orderId string, paymentMethod string) []byte {
-	event := &pb.OrderPlaced{
-		OrderId:       orderId,
-		Timestamp:     timestamppb.Now(),
-		VendorId:      "vendor-123",
-		CustomerId:    "customer-456",
-		ProductId:     "product-789",
-		Quantity:      2,
-		TotalPrice:    99.99,
-		PaymentMethod: paymentMethod,
+func createValidOrderPaymentInitiatedEvent(orderId string) []byte {
+	event := &pb.OrderPaymentInitiated{
+		OrderId:   orderId,
+		Timestamp: timestamppb.Now(),
 	}
 
 	eventBytes, _ := proto.Marshal(event)
 	return eventBytes
 }
 
-func TestController_InitializePendingPayment(t *testing.T) {
-	t.Run("successful payment initialization", func(t *testing.T) {
+func TestController_ProcessPayment(t *testing.T) {
+	t.Run("successful payment processing", func(t *testing.T) {
 		mockStore := &MockStore{}
 		mockProducer := &MockProducer{}
 
-		// Create valid OrderPlaced event that will produce a projection with pending status
+		// Create events: OrderPlaced -> OrderPaymentInitiated (creates initiated status)
 		orderPlacedEventBytes := createValidOrderPlacedEvent("order-123", "credit_card")
+		orderPaymentInitiatedEventBytes := createValidOrderPaymentInitiatedEvent("order-123")
+
 		mockEvents := []eventsrc.Event{
 			{
 				EventType:      orders.EventTypeOrderPlaced,
 				Data:           orderPlacedEventBytes,
 				SequenceNumber: 0,
+			},
+			{
+				EventType:      orders.EventTypeOrderPaymentInitiated,
+				Data:           orderPaymentInitiatedEventBytes,
+				SequenceNumber: 1,
 			},
 		}
 
@@ -72,8 +52,8 @@ func TestController_InitializePendingPayment(t *testing.T) {
 		mockProducer.On("Send", mock.Anything, mock.MatchedBy(func(args *eventsrc.SendArgs) bool {
 			return args.AggregateID == "order-123" &&
 				args.AggregateType == orders.AggregateTypeOrder &&
-				args.EventType == orders.EventTypeOrderPaymentInitiated &&
-				args.SequenceNumber == 1 &&
+				args.EventType == orders.EventTypeOrderPaid &&
+				args.SequenceNumber == 2 &&
 				len(args.Value) > 0
 		})).Return(nil)
 
@@ -82,7 +62,7 @@ func TestController_InitializePendingPayment(t *testing.T) {
 			producer: mockProducer,
 		}
 
-		err := controller.InitializePendingPayment(context.Background(), "order-123")
+		err := controller.ProcessPayment(context.Background(), "order-123")
 
 		assert.NoError(t, err)
 		mockStore.AssertExpectations(t)
@@ -95,7 +75,7 @@ func TestController_InitializePendingPayment(t *testing.T) {
 
 		controller := &Controller{store: mockStore}
 
-		err := controller.InitializePendingPayment(context.Background(), "order-123")
+		err := controller.ProcessPayment(context.Background(), "order-123")
 
 		assert.Error(t, err)
 		assert.Equal(t, ErrOrderNotFound, err)
@@ -108,7 +88,7 @@ func TestController_InitializePendingPayment(t *testing.T) {
 
 		controller := &Controller{store: mockStore}
 
-		err := controller.InitializePendingPayment(context.Background(), "order-123")
+		err := controller.ProcessPayment(context.Background(), "order-123")
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to list events")
@@ -118,13 +98,33 @@ func TestController_InitializePendingPayment(t *testing.T) {
 	t.Run("invalid payment status", func(t *testing.T) {
 		mockStore := &MockStore{}
 
-		// Create OrderPlaced event followed by OrderPaid event to create a paid status
+		// Create OrderPlaced event only (creates pending status, not initiated)
 		orderPlacedEventBytes := createValidOrderPlacedEvent("order-123", "credit_card")
-		orderPaidEvent := &pb.OrderPaid{
-			OrderId:   "order-123",
-			Timestamp: timestamppb.Now(),
+		mockEvents := []eventsrc.Event{
+			{
+				EventType:      orders.EventTypeOrderPlaced,
+				Data:           orderPlacedEventBytes,
+				SequenceNumber: 0,
+			},
 		}
-		orderPaidEventBytes, _ := proto.Marshal(orderPaidEvent)
+
+		mockStore.On("ListByAggregateID", mock.Anything, "order-123", orders.AggregateTypeOrder).Return(mockEvents, nil)
+
+		controller := &Controller{store: mockStore}
+
+		err := controller.ProcessPayment(context.Background(), "order-123")
+
+		assert.Error(t, err)
+		assert.Equal(t, ErrPaymentStatusNotInitiated, err)
+		mockStore.AssertExpectations(t)
+	})
+
+	t.Run("missing payment method", func(t *testing.T) {
+		mockStore := &MockStore{}
+
+		// Create events: OrderPlaced (no payment method) -> OrderPaymentInitiated
+		orderPlacedEventBytes := createValidOrderPlacedEvent("order-123", "") // No payment method
+		orderPaymentInitiatedEventBytes := createValidOrderPaymentInitiatedEvent("order-123")
 
 		mockEvents := []eventsrc.Event{
 			{
@@ -133,8 +133,8 @@ func TestController_InitializePendingPayment(t *testing.T) {
 				SequenceNumber: 0,
 			},
 			{
-				EventType:      orders.EventTypeOrderPaid,
-				Data:           orderPaidEventBytes,
+				EventType:      orders.EventTypeOrderPaymentInitiated,
+				Data:           orderPaymentInitiatedEventBytes,
 				SequenceNumber: 1,
 			},
 		}
@@ -143,12 +143,13 @@ func TestController_InitializePendingPayment(t *testing.T) {
 
 		controller := &Controller{store: mockStore}
 
-		err := controller.InitializePendingPayment(context.Background(), "order-123")
+		err := controller.ProcessPayment(context.Background(), "order-123")
 
 		assert.Error(t, err)
 		st, ok := status.FromError(err)
 		assert.True(t, ok)
-		assert.Equal(t, codes.FailedPrecondition, st.Code())
+		assert.Equal(t, codes.InvalidArgument, st.Code())
+		assert.Contains(t, st.Message(), "payment method is required")
 		mockStore.AssertExpectations(t)
 	})
 
@@ -157,11 +158,18 @@ func TestController_InitializePendingPayment(t *testing.T) {
 		mockProducer := &MockProducer{}
 
 		orderPlacedEventBytes := createValidOrderPlacedEvent("order-123", "credit_card")
+		orderPaymentInitiatedEventBytes := createValidOrderPaymentInitiatedEvent("order-123")
+
 		mockEvents := []eventsrc.Event{
 			{
 				EventType:      orders.EventTypeOrderPlaced,
 				Data:           orderPlacedEventBytes,
 				SequenceNumber: 0,
+			},
+			{
+				EventType:      orders.EventTypeOrderPaymentInitiated,
+				Data:           orderPaymentInitiatedEventBytes,
+				SequenceNumber: 1,
 			},
 		}
 
@@ -173,7 +181,7 @@ func TestController_InitializePendingPayment(t *testing.T) {
 			producer: mockProducer,
 		}
 
-		err := controller.InitializePendingPayment(context.Background(), "order-123")
+		err := controller.ProcessPayment(context.Background(), "order-123")
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to send event")
@@ -182,40 +190,39 @@ func TestController_InitializePendingPayment(t *testing.T) {
 	})
 }
 
-func TestValidatePaymentRequest(t *testing.T) {
-	t.Run("valid pending status", func(t *testing.T) {
+func TestValidateProcessPaymentRequest(t *testing.T) {
+	t.Run("valid initiated status", func(t *testing.T) {
 		projection := &orders.OrderProjection{
 			PaymentMethod: "credit_card",
-			PaymentStatus: orders.PaymentStatusPending,
+			PaymentStatus: orders.PaymentStatusInitiated,
 		}
 
-		err := validateInitPendingPaymentRequest(projection)
+		err := validateProcessPaymentRequest(projection)
 		assert.NoError(t, err)
 	})
 
 	t.Run("missing payment method", func(t *testing.T) {
 		projection := &orders.OrderProjection{
 			PaymentMethod: "",
-			PaymentStatus: orders.PaymentStatusPending,
+			PaymentStatus: orders.PaymentStatusInitiated,
 		}
 
-		err := validateInitPendingPaymentRequest(projection)
+		err := validateProcessPaymentRequest(projection)
 		assert.Error(t, err)
 		st, ok := status.FromError(err)
 		assert.True(t, ok)
 		assert.Equal(t, codes.InvalidArgument, st.Code())
+		assert.Contains(t, st.Message(), "payment method is required")
 	})
 
 	t.Run("invalid payment status", func(t *testing.T) {
 		projection := &orders.OrderProjection{
 			PaymentMethod: "credit_card",
-			PaymentStatus: orders.PaymentStatusPaid,
+			PaymentStatus: orders.PaymentStatusPending,
 		}
 
-		err := validateInitPendingPaymentRequest(projection)
+		err := validateProcessPaymentRequest(projection)
 		assert.Error(t, err)
-		st, ok := status.FromError(err)
-		assert.True(t, ok)
-		assert.Equal(t, codes.FailedPrecondition, st.Code())
+		assert.Equal(t, ErrPaymentStatusNotInitiated, err)
 	})
 }

@@ -10,10 +10,22 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+const defaultLimit = 25
+const defaultOffset = 0
+
 func (c *Controller) ListOrders(ctx context.Context, req *pb.ListOrdersRequest) (*pb.ListOrdersResponse, error) {
+	var limit uint = defaultLimit
+	var offset uint = defaultOffset
+	if req.Limit != nil {
+		limit = uint(*req.Limit)
+	}
+	if req.Offset != nil {
+		offset = uint(*req.Offset)
+	}
+
 	orders, err := c.projectionRepo.List(ctx, ent.ListArgs{
-		Limit:  uint(req.Limit),
-		Offset: uint(req.Offset),
+		Limit:  limit,
+		Offset: offset,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list orders: %w", err)

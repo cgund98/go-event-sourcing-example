@@ -37,10 +37,11 @@ func (c *Controller) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) 
 	}
 
 	err = c.producer.Send(ctx, &eventsrc.SendArgs{
-		AggregateID:   orderPlacedEvent.OrderId,
-		AggregateType: orders.AggregateTypeOrder,
-		EventType:     orders.EventTypeOrderPlaced,
-		Value:         orderPlacedEventBytes,
+		SequenceNumber: 0,
+		AggregateID:    orderPlacedEvent.OrderId,
+		AggregateType:  orders.AggregateTypeOrder,
+		EventType:      orders.EventTypeOrderPlaced,
+		Value:          orderPlacedEventBytes,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to send order placed event: %w", err)

@@ -10,10 +10,11 @@ import (
 
 // SendArgs contains the arguments required to send an event.
 type SendArgs struct {
-	AggregateID   string
-	AggregateType string
-	EventType     string
-	Value         []byte
+	SequenceNumber int
+	AggregateID    string
+	AggregateType  string
+	EventType      string
+	Value          []byte
 }
 
 // Producer is the interface for sending events.
@@ -35,16 +36,17 @@ func NewTransactionProducer(store Store, bus Bus, tx pg.Transactor) *Transaction
 
 // Send sends an event transactionally using the configured store and bus.
 func (p *TransactionProducer) Send(ctx context.Context, args *SendArgs) error {
-	var eventId string
+	var eventId int
 
 	// We need to commit our event to the store before publishing it to the bus.
 	// Otherwise the event may be consumed before it is committed to the store.
 	err := p.tx.WithTx(ctx, &sql.TxOptions{}, func(tx pg.Tx) error {
 		addedEventId, err := p.store.Persist(ctx, tx, PersistEventArgs{
-			AggregateId:   args.AggregateID,
-			AggregateType: args.AggregateType,
-			EventType:     args.EventType,
-			Data:          args.Value,
+			SequenceNumber: args.SequenceNumber,
+			AggregateId:    args.AggregateID,
+			AggregateType:  args.AggregateType,
+			EventType:      args.EventType,
+			Data:           args.Value,
 		})
 		if err != nil {
 			return err
