@@ -25,25 +25,26 @@ func (m *MockBus) Publish(ctx context.Context, args *PublishArgs) error {
 type MockStore struct {
 	mock.Mock
 	persistedEvents []Event
-	removedEventIds []string
+	removedEventIds []int
 }
 
-func (m *MockStore) Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) (string, error) {
+func (m *MockStore) Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) (int, error) {
 	callArgs := m.Called(ctx, tx, args)
-	eventId := callArgs.String(0)
+	eventId := callArgs.Int(0)
 	if callArgs.Error(1) == nil {
 		m.persistedEvents = append(m.persistedEvents, Event{
-			EventId:       1, // Mock event ID
-			AggregateId:   args.AggregateId,
-			AggregateType: args.AggregateType,
-			EventType:     args.EventType,
-			Data:          args.Data,
+			EventId:        1, // Mock event ID
+			SequenceNumber: args.SequenceNumber,
+			AggregateId:    args.AggregateId,
+			AggregateType:  args.AggregateType,
+			EventType:      args.EventType,
+			Data:           args.Data,
 		})
 	}
 	return eventId, callArgs.Error(1)
 }
 
-func (m *MockStore) Remove(ctx context.Context, tx pg.Tx, eventId string) error {
+func (m *MockStore) Remove(ctx context.Context, tx pg.Tx, eventId int) error {
 	callArgs := m.Called(ctx, tx, eventId)
 	if callArgs.Error(0) == nil {
 		m.removedEventIds = append(m.removedEventIds, eventId)
@@ -78,10 +79,11 @@ func TestTransactionProducer_Send(t *testing.T) {
 	ctx := context.Background()
 
 	args := &SendArgs{
-		AggregateID:   "order-123",
-		AggregateType: "orders",
-		EventType:     "OrderCreated",
-		Value:         []byte(`{"amount": 100}`),
+		SequenceNumber: 1,
+		AggregateID:    "order-123",
+		AggregateType:  "orders",
+		EventType:      "OrderCreated",
+		Value:          []byte(`{"amount": 100}`),
 	}
 
 	err := producer.Send(ctx, args)
@@ -100,6 +102,7 @@ func TestTransactionProducer_Send(t *testing.T) {
 	assert.Equal(t, args.AggregateType, event.AggregateType)
 	assert.Equal(t, args.EventType, event.EventType)
 	assert.Equal(t, args.Value, event.Data)
+	assert.Equal(t, args.SequenceNumber, event.SequenceNumber)
 
 	// Verify event was published to bus
 	require.Len(t, bus.Events, 1)
@@ -118,22 +121,25 @@ func TestTransactionProducer_Send_MultipleEvents(t *testing.T) {
 	// Send multiple events
 	events := []*SendArgs{
 		{
-			AggregateID:   "order-123",
-			AggregateType: "orders",
-			EventType:     "OrderCreated",
-			Value:         []byte(`{"amount": 100}`),
+			SequenceNumber: 0,
+			AggregateID:    "order-123",
+			AggregateType:  "orders",
+			EventType:      "OrderCreated",
+			Value:          []byte(`{"amount": 100}`),
 		},
 		{
-			AggregateID:   "order-123",
-			AggregateType: "orders",
-			EventType:     "OrderPaid",
-			Value:         []byte(`{"payment_method": "credit_card"}`),
+			SequenceNumber: 1,
+			AggregateID:    "order-123",
+			AggregateType:  "orders",
+			EventType:      "OrderPaid",
+			Value:          []byte(`{"payment_method": "credit_card"}`),
 		},
 		{
-			AggregateID:   "order-456",
-			AggregateType: "orders",
-			EventType:     "OrderCreated",
-			Value:         []byte(`{"amount": 200}`),
+			SequenceNumber: 0,
+			AggregateID:    "order-456",
+			AggregateType:  "orders",
+			EventType:      "OrderCreated",
+			Value:          []byte(`{"amount": 200}`),
 		},
 	}
 
@@ -173,10 +179,11 @@ func TestTransactionProducer_Send_BusPublishFailure(t *testing.T) {
 	ctx := context.Background()
 
 	args := &SendArgs{
-		AggregateID:   "order-123",
-		AggregateType: "orders",
-		EventType:     "OrderCreated",
-		Value:         []byte(`{"amount": 100}`),
+		SequenceNumber: 2,
+		AggregateID:    "order-123",
+		AggregateType:  "orders",
+		EventType:      "OrderCreated",
+		Value:          []byte(`{"amount": 100}`),
 	}
 
 	// Configure mocks
@@ -184,8 +191,9 @@ func TestTransactionProducer_Send_BusPublishFailure(t *testing.T) {
 		return persistArgs.AggregateId == args.AggregateID &&
 			persistArgs.AggregateType == args.AggregateType &&
 			persistArgs.EventType == args.EventType &&
+			persistArgs.SequenceNumber == args.SequenceNumber &&
 			string(persistArgs.Data) == string(args.Value)
-	})).Return("event-123", nil)
+	})).Return(123, nil)
 
 	mockBus.On("Publish", mock.Anything, mock.MatchedBy(func(publishArgs *PublishArgs) bool {
 		return publishArgs.AggregateID == args.AggregateID &&
@@ -194,7 +202,7 @@ func TestTransactionProducer_Send_BusPublishFailure(t *testing.T) {
 			string(publishArgs.Value) == string(args.Value)
 	})).Return(errors.New("kafka connection failed"))
 
-	mockStore.On("Remove", mock.Anything, mock.Anything, "event-123").Return(nil)
+	mockStore.On("Remove", mock.Anything, mock.Anything, 123).Return(nil)
 
 	// Execute Send
 	err := producer.Send(ctx, args)
@@ -210,10 +218,10 @@ func TestTransactionProducer_Send_BusPublishFailure(t *testing.T) {
 	mockBus.AssertCalled(t, "Publish", mock.Anything, mock.Anything)
 
 	// Verify Remove was called to rollback
-	mockStore.AssertCalled(t, "Remove", mock.Anything, mock.Anything, "event-123")
+	mockStore.AssertCalled(t, "Remove", mock.Anything, mock.Anything, 123)
 
 	// Verify the event was actually removed
-	assert.Contains(t, mockStore.removedEventIds, "event-123")
+	assert.Contains(t, mockStore.removedEventIds, 123)
 }
 
 func TestTransactionProducer_Send_BusPublishFailure_RemoveError(t *testing.T) {
@@ -225,16 +233,17 @@ func TestTransactionProducer_Send_BusPublishFailure_RemoveError(t *testing.T) {
 	ctx := context.Background()
 
 	args := &SendArgs{
-		AggregateID:   "order-123",
-		AggregateType: "orders",
-		EventType:     "OrderCreated",
-		Value:         []byte(`{"amount": 100}`),
+		SequenceNumber: 3,
+		AggregateID:    "order-123",
+		AggregateType:  "orders",
+		EventType:      "OrderCreated",
+		Value:          []byte(`{"amount": 100}`),
 	}
 
 	// Configure mocks
-	mockStore.On("Persist", mock.Anything, mock.Anything, mock.Anything).Return("event-123", nil)
+	mockStore.On("Persist", mock.Anything, mock.Anything, mock.Anything).Return(123, nil)
 	mockBus.On("Publish", mock.Anything, mock.Anything).Return(errors.New("kafka connection failed"))
-	mockStore.On("Remove", mock.Anything, mock.Anything, "event-123").Return(errors.New("database error"))
+	mockStore.On("Remove", mock.Anything, mock.Anything, 123).Return(errors.New("database error"))
 
 	// Execute Send
 	err := producer.Send(ctx, args)
@@ -246,7 +255,7 @@ func TestTransactionProducer_Send_BusPublishFailure_RemoveError(t *testing.T) {
 	// Verify all operations were called
 	mockStore.AssertCalled(t, "Persist", mock.Anything, mock.Anything, mock.Anything)
 	mockBus.AssertCalled(t, "Publish", mock.Anything, mock.Anything)
-	mockStore.AssertCalled(t, "Remove", mock.Anything, mock.Anything, "event-123")
+	mockStore.AssertCalled(t, "Remove", mock.Anything, mock.Anything, 123)
 }
 
 func TestTransactionProducer_Send_StorePersistFailure(t *testing.T) {
@@ -258,14 +267,15 @@ func TestTransactionProducer_Send_StorePersistFailure(t *testing.T) {
 	ctx := context.Background()
 
 	args := &SendArgs{
-		AggregateID:   "order-123",
-		AggregateType: "orders",
-		EventType:     "OrderCreated",
-		Value:         []byte(`{"amount": 100}`),
+		SequenceNumber: 4,
+		AggregateID:    "order-123",
+		AggregateType:  "orders",
+		EventType:      "OrderCreated",
+		Value:          []byte(`{"amount": 100}`),
 	}
 
 	// Configure mocks - Persist fails
-	mockStore.On("Persist", mock.Anything, mock.Anything, mock.Anything).Return("", errors.New("database error"))
+	mockStore.On("Persist", mock.Anything, mock.Anything, mock.Anything).Return(0, errors.New("database error"))
 
 	// Execute Send
 	err := producer.Send(ctx, args)

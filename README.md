@@ -58,17 +58,43 @@ This approach provides:
 
 #### Why Postgres + Kafka?
 
+We use a combination of Postgres & Kafka due to the need to handle the following requirements:
+- Safely and quickly append and retrieve events for a given aggregate ID.
+- Publish events for asynchronous consumers.
+
+Neither one of these tools can handle both these use cases on their own, so we use a combination.
+
+**Event Transaction**
+
+Whenever we emit an event, we do both of these things in a transaction:
+
+1. Insert new event into Postgres. Commit changes.
+2. Publish to Kafka topic.
+  - If this fails, try to remove the event from Postgres.
+
+Instead of publishing to Kafka within our application, we could also capture changes to our event store with CDC tools (e.g. Debezium, DynamoDB streams).
+
+
 **Postgres as Event Store:**
 
 - Fast, indexed queries for any aggregate
 - Transactional guarantees for consistency
 - Better for per-aggregate queries than Kafka
 
+Alternatives:
+- DynamoDB (supports CDC)
+- Any SQL DB
+
 **Kafka as Message Bus:**
 
 - High-throughput event streaming
 - Reliable delivery to multiple consumers
 - Perfect for triggering downstream processes
+- Can "replay" events by resetting a consumer's offset.
+
+Alternatives:
+- Kinesis
+- SQS (no replay)
 
 ### Data Flow
 
@@ -146,7 +172,7 @@ curl -X POST http://localhost:8080/v1/orders \
 
 ### Get Order Details
 
-Retrieve detailed information about a specific order:
+Retrieve detailed information about a specific order. Will generate a projection in-request.
 
 ```bash
 curl -X GET http://localhost:8080/v1/orders/018f1234-5678-9abc-def0-123456789abc
@@ -172,11 +198,11 @@ curl -X GET http://localhost:8080/v1/orders/018f1234-5678-9abc-def0-123456789abc
 }
 ```
 
-**Note:** Returns `null` if the order doesn't exist.
+**Note:** Returns NotFound error if the order doesn't exist.
 
 ### List Orders
 
-Retrieve a paginated list of orders:
+Retrieve a paginated list of orders. Uses projection table.
 
 ```bash
 curl -X GET "http://localhost:8080/v1/orders?limit=10&offset=0"
@@ -215,7 +241,7 @@ curl -X GET "http://localhost:8080/v1/orders?limit=10&offset=0"
 Cancel an existing order with a reason:
 
 ```bash
-curl -X PUT http://localhost:8080/v1/orders/018f1234-5678-9abc-def0-123456789abc/cancel \
+curl -X POST http://localhost:8080/v1/orders/018f1234-5678-9abc-def0-123456789abc/cancel \
   -H "Content-Type: application/json" \
   -d '{
     "reason": "Customer requested cancellation"
@@ -284,16 +310,64 @@ We use **Protocol Buffers** for event definitions, providing:
 - 📊 **Limited BI tooling** - Requires JSON conversion for analytics
 - 👀 **Not human-readable** - Binary format needs parsing
 
+### Event Store Schema
+
+The event store uses a **Postgres table** with the following structure:
+
+```sql
+CREATE TABLE event (
+    event_id SERIAL PRIMARY KEY,
+    sequence_number BIGINT NOT NULL,
+    aggregate_id VARCHAR(255) NOT NULL,
+    aggregate_type VARCHAR(255) NOT NULL,
+    event_type VARCHAR(255) NOT NULL,
+    event_data BYTEA NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+
+    UNIQUE (sequence_number, aggregate_id)
+);
+```
+
+**Key Fields:**
+
+- **`event_id`**: Auto-incrementing unique identifier for each event
+- **`sequence_number`**: Monotonic sequence number within an aggregate (starts at 0). Used for optimistic locking
+- **`aggregate_id`**: Unique identifier for the business entity (e.g., order ID)
+- **`aggregate_type`**: Type of aggregate (e.g., "order")
+- **`event_type`**: Type of event (e.g., "order_placed", "order_paid")
+- **`event_data`**: Binary protobuf data containing the event payload
+- **`created_at`**: Timestamp when the event was stored
+
+**Constraints & Indexes:**
+
+- **Unique constraint** on `(sequence_number, aggregate_id)` ensures that we cannot create two events with the same sequence number. Used for optimistic locking
+- **Index** on `aggregate_id` for fast aggregate event retrieval
+
+**Optimistic Locking:**
+
+The system uses optimistic locking via sequence numbers to prevent concurrent modification conflicts. Commands read the current sequence number, validate business rules, then attempt to write with `sequence_number + 1`. If another command has already written to that sequence number, the database constraint violation prevents the duplicate, ensuring event ordering and consistency without explicit locks.
+
+**Example Use Case:**
+
+Two users try to pay for the same order simultaneously
+   - User A reads events with sequence_number <= 2, attempts to write sequence_number = 3
+   - At the same time, User B reads events up sequence_number <= 2, attempts to write sequence_number = 3
+   - First write succeeds, second fails with constraint violation
+   - Only one payment event is recorded, preventing double-charging
+
 ### Project Structure
 
 ```
 ├── api/v1/           # Protobuf definitions
 ├── go/
-│   ├── cmd/         # Application entrypoint
+│   ├── cmd/          # Application entrypoint
 │   ├── internal/
-│   │   ├── entity/  # Domain logic & projections
-│   │   ├── infra/   # Infrastructure (store, bus, etc.)
-│   │   └── service/ # gRPC service implementations
-│   └── scripts/     # Build & deployment scripts
+│   │   ├── entity/   # Domain logic & projections
+│   │   ├── infra/    # Infrastructure (store, bus, etc.)
+│   │   └── service/  # gRPC service implementations
+│   └── scripts/      # Build & deployment scripts
+├── resources/
+│   ├── docker/       # Dockerfiles
+│   └── migrations/   # Database migrations
 └── docker-compose.yml
 ```

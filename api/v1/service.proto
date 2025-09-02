@@ -29,7 +29,7 @@ service OrderService {
     }
     rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse) {
         option (google.api.http) = {
-            put: "/v1/orders/{order_id}/cancel"
+            post: "/v1/orders/{order_id}/cancel"
             body: "*"
         };
     }

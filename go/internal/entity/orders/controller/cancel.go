@@ -27,7 +27,7 @@ func validateCancelOrderRequest(projection *orders.OrderProjection) error {
 
 func (c *Controller) CancelOrder(ctx context.Context, req *pb.CancelOrderRequest) (*pb.CancelOrderResponse, error) {
 	// Fetch the order projection
-	orderProjection, err := c.GetProjection(ctx, req.OrderId)
+	orderProjection, curSeqNum, err := c.GetProjection(ctx, req.OrderId)
 	if err != nil {
 		return nil, err
 	}
@@ -52,10 +52,11 @@ func (c *Controller) CancelOrder(ctx context.Context, req *pb.CancelOrderRequest
 	}
 
 	err = c.producer.Send(ctx, &eventsrc.SendArgs{
-		AggregateID:   req.OrderId,
-		AggregateType: orders.AggregateTypeOrder,
-		EventType:     orders.EventTypeOrderCancelled,
-		Value:         orderCancelledEventBytes,
+		SequenceNumber: curSeqNum + 1,
+		AggregateID:    req.OrderId,
+		AggregateType:  orders.AggregateTypeOrder,
+		EventType:      orders.EventTypeOrderCancelled,
+		Value:          orderCancelledEventBytes,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to send order cancelled event: %w", err)

@@ -13,7 +13,7 @@ import (
 func (c *Controller) IndexProjection(ctx context.Context, orderId string) error {
 
 	// Fetch the order projection
-	orderProjection, err := c.GetProjection(ctx, orderId)
+	orderProjection, _, err := c.GetProjection(ctx, orderId)
 	if err != nil {
 		return err
 	}
@@ -27,6 +27,8 @@ func (c *Controller) IndexProjection(ctx context.Context, orderId string) error 
 			OrderId:        orderId,
 			PaymentStatus:  orderProjection.PaymentStatus,
 			ShippingStatus: orderProjection.ShippingStatus,
+			CreatedAt:      orderProjection.CreatedAt,
+			UpdatedAt:      orderProjection.UpdatedAt,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to upsert projection: %w", err)

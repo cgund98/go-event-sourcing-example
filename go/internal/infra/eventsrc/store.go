@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,24 +14,26 @@ import (
 )
 
 type PersistEventArgs struct {
-	AggregateId   string
-	AggregateType string
-	EventType     string
-	Data          []byte
+	SequenceNumber int
+	AggregateId    string
+	AggregateType  string
+	EventType      string
+	Data           []byte
 }
 
 type Event struct {
-	EventId       int       `db:"event_id"`
-	AggregateId   string    `db:"aggregate_id"`
-	AggregateType string    `db:"aggregate_type"`
-	EventType     string    `db:"event_type"`
-	Data          []byte    `db:"event_data"`
-	CreatedAt     time.Time `db:"created_at"`
+	EventId        int       `db:"event_id"`
+	SequenceNumber int       `db:"sequence_number"`
+	AggregateId    string    `db:"aggregate_id"`
+	AggregateType  string    `db:"aggregate_type"`
+	EventType      string    `db:"event_type"`
+	Data           []byte    `db:"event_data"`
+	CreatedAt      time.Time `db:"created_at"`
 }
 
 type Store interface {
-	Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) (string, error)
-	Remove(ctx context.Context, tx pg.Tx, eventId string) error
+	Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) (int, error)
+	Remove(ctx context.Context, tx pg.Tx, eventId int) error
 	ListByAggregateID(ctx context.Context, aggregateId string, aggregateType string) ([]Event, error)
 }
 
@@ -56,46 +57,47 @@ func NewPostgresStore(db *sqlx.DB, table string) *PostgresStore {
 	return &PostgresStore{db: db, table: table}
 }
 
-func (s *PostgresStore) Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) (string, error) {
+func (s *PostgresStore) Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) (int, error) {
 	// Compile query
 	ds := pg.Dialect.Insert(s.table).Prepared(true).
 		Cols("aggregate_id", "aggregate_type", "event_type", "event_data").
 		Rows([]goqu.Record{
 			{
-				"aggregate_id":   serializeAggregateId(args.AggregateId, args.AggregateType),
-				"aggregate_type": args.AggregateType,
-				"event_type":     args.EventType,
-				"event_data":     args.Data,
+				"aggregate_id":    serializeAggregateId(args.AggregateId, args.AggregateType),
+				"sequence_number": args.SequenceNumber,
+				"aggregate_type":  args.AggregateType,
+				"event_type":      args.EventType,
+				"event_data":      args.Data,
 			},
 		}).
 		Returning("event_id")
 
 	query, queryArgs, err := ds.ToSQL()
 	if err != nil {
-		return "", pg.ErrorDsl(err)
+		return -1, pg.ErrorDsl(err)
 	}
 
 	// Execute query
 	rows, err := tx.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
-		return "", pg.ErrorDb(err)
+		return -1, pg.ErrorDb(err)
 	}
 	defer rows.Close()
 
-	eventId := ""
+	eventId := -1
 	if rows.Next() {
 		err := rows.Scan(&eventId)
 		if err != nil {
-			return "", pg.ErrorUnmarshal(err)
+			return eventId, pg.ErrorUnmarshal(err)
 		}
 	} else {
-		return "", errors.New("no event id returned")
+		return eventId, errors.New("no event id returned")
 	}
 
 	return eventId, nil
 }
 
-func (s *PostgresStore) Remove(ctx context.Context, tx pg.Tx, eventId string) error {
+func (s *PostgresStore) Remove(ctx context.Context, tx pg.Tx, eventId int) error {
 	// Compile query
 	ds := pg.Dialect.Delete(s.table).Prepared(true).
 		Where(goqu.Ex{"event_id": eventId})
@@ -157,7 +159,7 @@ func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{Events: make(map[string][]Event)}
 }
 
-func (s *InMemoryStore) Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) (string, error) {
+func (s *InMemoryStore) Persist(ctx context.Context, tx pg.Tx, args PersistEventArgs) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -167,25 +169,26 @@ func (s *InMemoryStore) Persist(ctx context.Context, tx pg.Tx, args PersistEvent
 	eventID := len(s.Events[aggregateId])
 
 	s.Events[aggregateId] = append(s.Events[aggregateId], Event{
-		EventId:       eventID,
-		AggregateId:   aggregateId,
-		AggregateType: args.AggregateType,
-		EventType:     args.EventType,
-		Data:          args.Data,
-		CreatedAt:     time.Now().UTC(),
+		EventId:        eventID,
+		SequenceNumber: args.SequenceNumber,
+		AggregateId:    aggregateId,
+		AggregateType:  args.AggregateType,
+		EventType:      args.EventType,
+		Data:           args.Data,
+		CreatedAt:      time.Now().UTC(),
 	})
 
-	return strconv.Itoa(eventID), nil
+	return eventID, nil
 }
 
-func (s *InMemoryStore) Remove(ctx context.Context, tx pg.Tx, eventId string) error {
+func (s *InMemoryStore) Remove(ctx context.Context, tx pg.Tx, eventId int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Iterate over each block of events and remove the event with the given eventId
 	for _, events := range s.Events {
 		for i, event := range events {
-			if strconv.Itoa(event.EventId) == eventId {
+			if event.EventId == eventId {
 				events = append(events[:i], events[i+1:]...)
 			}
 		}

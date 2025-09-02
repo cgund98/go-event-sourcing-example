@@ -31,6 +31,7 @@ func TestController_PlaceOrder(t *testing.T) {
 			return args.AggregateType == orders.AggregateTypeOrder &&
 				args.EventType == orders.EventTypeOrderPlaced &&
 				args.AggregateID != "" &&
+				args.SequenceNumber == 0 &&
 				len(args.Value) > 0
 		})).Return(nil)
 

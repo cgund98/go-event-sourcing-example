@@ -25,6 +25,8 @@ type UpsertArgs struct {
 	OrderId        string
 	PaymentStatus  string
 	ShippingStatus string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type ListArgs struct {
@@ -56,11 +58,15 @@ func (r *PgProjectionRepo) Upsert(ctx context.Context, tx pg.Tx, args UpsertArgs
 				"order_id":        args.OrderId,
 				"payment_status":  args.PaymentStatus,
 				"shipping_status": args.ShippingStatus,
+				"created_at":      args.CreatedAt,
+				"updated_at":      args.UpdatedAt,
 			},
 		}).
 		OnConflict(goqu.DoUpdate("order_id", goqu.Record{
 			"payment_status":  goqu.I("excluded.payment_status"),
 			"shipping_status": goqu.I("excluded.shipping_status"),
+			"created_at":      goqu.I("excluded.created_at"),
+			"updated_at":      goqu.I("excluded.updated_at"),
 		}))
 
 	query, queryArgs, err := ds.ToSQL()

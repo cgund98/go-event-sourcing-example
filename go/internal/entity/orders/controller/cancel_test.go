@@ -16,18 +16,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func createValidOrderPaidEvent(orderId string) []byte {
-	event := &pb.OrderPaid{
-		OrderId:   orderId,
-		Timestamp: timestamppb.Now(),
-	}
-
-	eventBytes, _ := proto.Marshal(event)
-	return eventBytes
-}
-
-func TestController_UpdateShippingStatus(t *testing.T) {
-	t.Run("successful shipping status update", func(t *testing.T) {
+func TestController_CancelOrder(t *testing.T) {
+	t.Run("successful order cancellation", func(t *testing.T) {
 		mockStore := &MockStore{}
 		mockProducer := &MockProducer{}
 
@@ -52,7 +42,7 @@ func TestController_UpdateShippingStatus(t *testing.T) {
 		mockProducer.On("Send", mock.Anything, mock.MatchedBy(func(args *eventsrc.SendArgs) bool {
 			return args.AggregateID == "order-123" &&
 				args.AggregateType == orders.AggregateTypeOrder &&
-				args.EventType == orders.EventTypeOrderShippingStatusUpdated &&
+				args.EventType == orders.EventTypeOrderCancelled &&
 				args.SequenceNumber == 2 &&
 				len(args.Value) > 0
 		})).Return(nil)
@@ -62,12 +52,12 @@ func TestController_UpdateShippingStatus(t *testing.T) {
 			producer: mockProducer,
 		}
 
-		request := &pb.UpdateOrderShippingStatusRequest{
+		request := &pb.CancelOrderRequest{
 			OrderId: "order-123",
-			Status:  pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT,
+			Reason:  "Customer requested cancellation",
 		}
 
-		response, err := controller.UpdateShippingStatus(context.Background(), request)
+		response, err := controller.CancelOrder(context.Background(), request)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, response)
@@ -82,12 +72,12 @@ func TestController_UpdateShippingStatus(t *testing.T) {
 
 		controller := &Controller{store: mockStore}
 
-		request := &pb.UpdateOrderShippingStatusRequest{
+		request := &pb.CancelOrderRequest{
 			OrderId: "order-123",
-			Status:  pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT,
+			Reason:  "Customer requested cancellation",
 		}
 
-		response, err := controller.UpdateShippingStatus(context.Background(), request)
+		response, err := controller.CancelOrder(context.Background(), request)
 
 		assert.Error(t, err)
 		assert.Equal(t, ErrOrderNotFound, err)
@@ -95,16 +85,35 @@ func TestController_UpdateShippingStatus(t *testing.T) {
 		mockStore.AssertExpectations(t)
 	})
 
-	t.Run("order not paid", func(t *testing.T) {
+	t.Run("order already cancelled", func(t *testing.T) {
 		mockStore := &MockStore{}
 
-		// Only OrderPlaced event (creates pending payment status)
+		// Create events: OrderPlaced -> OrderPaid -> OrderCancelled
 		orderPlacedEventBytes := createValidOrderPlacedEvent("order-123", "credit_card")
+		orderPaidEventBytes := createValidOrderPaidEvent("order-123")
+
+		orderCancelledEvent := &pb.OrderCancelled{
+			OrderId:   "order-123",
+			Timestamp: timestamppb.Now(),
+			Reason:    "Previous cancellation",
+		}
+		orderCancelledEventBytes, _ := proto.Marshal(orderCancelledEvent)
+
 		mockEvents := []eventsrc.Event{
 			{
 				EventType:      orders.EventTypeOrderPlaced,
 				Data:           orderPlacedEventBytes,
 				SequenceNumber: 0,
+			},
+			{
+				EventType:      orders.EventTypeOrderPaid,
+				Data:           orderPaidEventBytes,
+				SequenceNumber: 1,
+			},
+			{
+				EventType:      orders.EventTypeOrderCancelled,
+				Data:           orderCancelledEventBytes,
+				SequenceNumber: 2,
 			},
 		}
 
@@ -112,33 +121,33 @@ func TestController_UpdateShippingStatus(t *testing.T) {
 
 		controller := &Controller{store: mockStore}
 
-		request := &pb.UpdateOrderShippingStatusRequest{
+		request := &pb.CancelOrderRequest{
 			OrderId: "order-123",
-			Status:  pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT,
+			Reason:  "Customer requested cancellation",
 		}
 
-		response, err := controller.UpdateShippingStatus(context.Background(), request)
+		response, err := controller.CancelOrder(context.Background(), request)
 
 		assert.Error(t, err)
 		st, ok := status.FromError(err)
 		assert.True(t, ok)
 		assert.Equal(t, codes.FailedPrecondition, st.Code())
-		assert.Contains(t, st.Message(), "order has not been paid")
+		assert.Contains(t, st.Message(), "order is already cancelled")
 		assert.Nil(t, response)
 		mockStore.AssertExpectations(t)
 	})
 
-	t.Run("lower shipping status", func(t *testing.T) {
+	t.Run("order already delivered", func(t *testing.T) {
 		mockStore := &MockStore{}
 
-		// Create events: OrderPlaced -> OrderPaid -> ShippingStatusUpdated (in_transit)
+		// Create events: OrderPlaced -> OrderPaid -> ShippingStatusUpdated (delivered)
 		orderPlacedEventBytes := createValidOrderPlacedEvent("order-123", "credit_card")
 		orderPaidEventBytes := createValidOrderPaidEvent("order-123")
 
 		shippingEvent := &pb.OrderShippingStatusUpdated{
 			OrderId:   "order-123",
 			Timestamp: timestamppb.Now(),
-			Status:    pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT,
+			Status:    pb.ShippingStatus_SHIPPING_STATUS_DELIVERED,
 		}
 		shippingEventBytes, _ := proto.Marshal(shippingEvent)
 
@@ -161,18 +170,18 @@ func TestController_UpdateShippingStatus(t *testing.T) {
 
 		controller := &Controller{store: mockStore}
 
-		request := &pb.UpdateOrderShippingStatusRequest{
+		request := &pb.CancelOrderRequest{
 			OrderId: "order-123",
-			Status:  pb.ShippingStatus_SHIPPING_STATUS_WAITING_FOR_SHIPMENT, // Lower than in_transit
+			Reason:  "Customer requested cancellation",
 		}
 
-		response, err := controller.UpdateShippingStatus(context.Background(), request)
+		response, err := controller.CancelOrder(context.Background(), request)
 
 		assert.Error(t, err)
 		st, ok := status.FromError(err)
 		assert.True(t, ok)
 		assert.Equal(t, codes.FailedPrecondition, st.Code())
-		assert.Contains(t, st.Message(), "cannot set shipping status to a lower status")
+		assert.Contains(t, st.Message(), "cannot cancel an order that has already been delivered")
 		assert.Nil(t, response)
 		mockStore.AssertExpectations(t)
 	})
@@ -205,91 +214,57 @@ func TestController_UpdateShippingStatus(t *testing.T) {
 			producer: mockProducer,
 		}
 
-		request := &pb.UpdateOrderShippingStatusRequest{
+		request := &pb.CancelOrderRequest{
 			OrderId: "order-123",
-			Status:  pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT,
+			Reason:  "Customer requested cancellation",
 		}
 
-		response, err := controller.UpdateShippingStatus(context.Background(), request)
+		response, err := controller.CancelOrder(context.Background(), request)
 
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to send order shipping status updated event")
+		assert.Contains(t, err.Error(), "failed to send order cancelled event")
 		assert.Nil(t, response)
 		mockStore.AssertExpectations(t)
 		mockProducer.AssertExpectations(t)
 	})
 }
 
-func TestValidateUpdateShippingStatusRequest(t *testing.T) {
+func TestValidateCancelOrderRequest(t *testing.T) {
 	t.Run("valid request", func(t *testing.T) {
 		projection := &orders.OrderProjection{
 			PaymentStatus:  orders.PaymentStatusPaid,
 			ShippingStatus: orders.ShippingStatusWaitingForShipment,
 		}
 
-		request := &pb.UpdateOrderShippingStatusRequest{
-			OrderId: "order-123",
-			Status:  pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT,
-		}
-
-		err := validateUpdateShippingStatusRequest(request, projection)
+		err := validateCancelOrderRequest(projection)
 		assert.NoError(t, err)
 	})
 
-	t.Run("order not paid", func(t *testing.T) {
-		projection := &orders.OrderProjection{
-			PaymentStatus:  orders.PaymentStatusPending,
-			ShippingStatus: orders.ShippingStatusWaitingForPayment,
-		}
-
-		request := &pb.UpdateOrderShippingStatusRequest{
-			OrderId: "order-123",
-			Status:  pb.ShippingStatus_SHIPPING_STATUS_IN_TRANSIT,
-		}
-
-		err := validateUpdateShippingStatusRequest(request, projection)
-		assert.Error(t, err)
-		st, ok := status.FromError(err)
-		assert.True(t, ok)
-		assert.Equal(t, codes.FailedPrecondition, st.Code())
-		assert.Contains(t, st.Message(), "order has not been paid")
-	})
-
-	t.Run("cancelling the order", func(t *testing.T) {
+	t.Run("order already cancelled", func(t *testing.T) {
 		projection := &orders.OrderProjection{
 			PaymentStatus:  orders.PaymentStatusPaid,
-			ShippingStatus: orders.ShippingStatusInTransit,
+			ShippingStatus: orders.ShippingStatusCancelled,
 		}
 
-		request := &pb.UpdateOrderShippingStatusRequest{
-			OrderId: "order-123",
-			Status:  pb.ShippingStatus_SHIPPING_STATUS_CANCELLED,
-		}
-
-		err := validateUpdateShippingStatusRequest(request, projection)
+		err := validateCancelOrderRequest(projection)
 		assert.Error(t, err)
 		st, ok := status.FromError(err)
 		assert.True(t, ok)
 		assert.Equal(t, codes.FailedPrecondition, st.Code())
-		assert.Contains(t, st.Message(), "cannot cancel the order when updating shipping status. Please cancel the order instead.")
+		assert.Contains(t, st.Message(), "order is already cancelled")
 	})
 
-	t.Run("lower shipping status", func(t *testing.T) {
+	t.Run("order already delivered", func(t *testing.T) {
 		projection := &orders.OrderProjection{
 			PaymentStatus:  orders.PaymentStatusPaid,
-			ShippingStatus: orders.ShippingStatusInTransit,
+			ShippingStatus: orders.ShippingStatusDelivered,
 		}
 
-		request := &pb.UpdateOrderShippingStatusRequest{
-			OrderId: "order-123",
-			Status:  pb.ShippingStatus_SHIPPING_STATUS_WAITING_FOR_SHIPMENT, // Lower than in_transit
-		}
-
-		err := validateUpdateShippingStatusRequest(request, projection)
+		err := validateCancelOrderRequest(projection)
 		assert.Error(t, err)
 		st, ok := status.FromError(err)
 		assert.True(t, ok)
 		assert.Equal(t, codes.FailedPrecondition, st.Code())
-		assert.Contains(t, st.Message(), "cannot set shipping status to a lower status")
+		assert.Contains(t, st.Message(), "cannot cancel an order that has already been delivered")
 	})
 }
