@@ -56,6 +56,8 @@ This approach provides:
 - 📋 **Transparency** - Complete audit trail for compliance
 - 📈 **Scalability** - Events can be processed in parallel and replayed
 
+For some systems, these characteristics might be nice-to-have. In others, they are a requirement.
+
 #### Why Postgres + Kafka?
 
 We use a combination of Postgres & Kafka due to the need to handle the following requirements:
@@ -64,16 +66,11 @@ We use a combination of Postgres & Kafka due to the need to handle the following
 
 Neither one of these tools can handle both these use cases on their own, so we use a combination.
 
-**Event Transaction**
+#### CDC
 
-Whenever we emit an event, we do both of these things in a transaction:
+This application publishes events to the message bus directly. This was done for simplicity sake, but it is not the only way to publish new events to consumers.
 
-1. Insert new event into Postgres. Commit changes.
-2. Publish to Kafka topic.
-  - If this fails, try to remove the event from Postgres.
-
-Instead of publishing to Kafka within our application, we could also capture changes to our event store with CDC tools (e.g. Debezium, DynamoDB streams).
-
+Instead of publishing to a bus directly, we could also capture changes to our event store with CDC tools (e.g. Debezium, DynamoDB streams). This would remove a potential point of failure in our application logic, but it would require extra infrastructure to maintain.
 
 **Postgres as Event Store:**
 
@@ -82,8 +79,7 @@ Instead of publishing to Kafka within our application, we could also capture cha
 - Better for per-aggregate queries than Kafka
 
 Alternatives:
-- DynamoDB (supports CDC)
-- Any SQL DB
+- DynamoDB
 
 **Kafka as Message Bus:**
 
@@ -94,25 +90,42 @@ Alternatives:
 
 Alternatives:
 - Kinesis
-- SQS (no replay)
+- SQS
 
 ### Data Flow
 
+#### Commands
+
 ```mermaid
 graph LR
-    A[Command] --> B[Event Store]
-    B --> C[Kafka Topic]
+    Z[User] --> G[HTTP/JSON API]
+    Z --> F[gRPC API]
+    G --> F
+    F --> A[Command]
+    A --> B[Event Store]
+    A --> C[Kafka Topic]
     C --> D[Consumers]
-    D --> E[Projections]
-    E --> F[gRPC API]
-    F --> G[HTTP/JSON API]
+    D --> E[Projection Table]
 ```
 
-1. **Commands** (e.g., `PlaceOrder`) write events to Postgres
-2. **Same transaction** publishes notification to Kafka
-3. **Consumers** read from Kafka and update projections
-4. **Projections** are exposed via gRPC and HTTP APIs
-5. **Future commands** validate against the event log
+1. **Commands** (e.g., `PlaceOrder`) write new events to the event store and message bus.
+2. **Consumers** read from Kafka and update projection table.
+
+#### Queries
+
+```mermaid
+graph LR
+    Z[User] --> G[HTTP/JSON API]
+    Z --> F[gRPC API]
+    G --> F
+    F --> A[Query]
+    A --> B[Event Store]
+    A --> E[Projection Table]
+```
+Queries can source data from two locations:
+
+1. **Event Store**: fetch event log directly and create a projection in-request. This will always be up to date, but computationally intensive. (e.g. GetOrder)
+2. **Projection Table**: fetch a projection created by an async consumer. Eventually consistent but much faster to query. (e.g. ListOrders)
 
 ## 🚀 Quick Start
 
@@ -285,15 +298,7 @@ curl -X PUT http://localhost:8080/v1/orders/018f1234-5678-9abc-def0-123456789abc
 - `SHIPPING_STATUS_DELIVERED`
 - `SHIPPING_STATUS_CANCELLED`
 
-**Available Payment Statuses:**
-
-- `PAYMENT_STATUS_UNSPECIFIED`
-- `PAYMENT_STATUS_PENDING`
-- `PAYMENT_STATUS_INITIATED`
-- `PAYMENT_STATUS_PAID`
-- `PAYMENT_STATUS_FAILED`
-
-## �� Technical Details
+## Technical Details
 
 ### Event Schema
 
@@ -307,7 +312,7 @@ We use **Protocol Buffers** for event definitions, providing:
 
 **Trade-offs:**
 
-- 📊 **Limited BI tooling** - Requires JSON conversion for analytics
+- 📊 **Data Warehouse Compatability** - Requires JSON conversion for analytics
 - 👀 **Not human-readable** - Binary format needs parsing
 
 ### Event Store Schema
@@ -345,13 +350,15 @@ CREATE TABLE event (
 
 **Optimistic Locking:**
 
-The system uses optimistic locking via sequence numbers to prevent concurrent modification conflicts. Commands read the current sequence number, validate business rules, then attempt to write with `sequence_number + 1`. If another command has already written to that sequence number, the database constraint violation prevents the duplicate, ensuring event ordering and consistency without explicit locks.
+The system uses optimistic locking via sequence numbers to prevent concurrent modification conflicts. Commands read the current sequence number, validate business rules, then attempt to write with `sequence_number + 1`. 
+
+If another command has already written an event with that sequence number, the database constraint will prevent the duplicate from being inserted. The command will fail and can be retried safely. 
 
 **Example Use Case:**
 
 Two users try to pay for the same order simultaneously
-   - User A reads events with sequence_number <= 2, attempts to write sequence_number = 3
-   - At the same time, User B reads events up sequence_number <= 2, attempts to write sequence_number = 3
+   - User A reads events with sequence_number <= 2, attempts to write with sequence_number = 3
+   - At the same time, User B reads events up sequence_number <= 2, attempts to write with sequence_number = 3
    - First write succeeds, second fails with constraint violation
    - Only one payment event is recorded, preventing double-charging
 
